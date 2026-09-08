@@ -188,99 +188,81 @@ body {
   border-bottom: 1px solid var(--bg-panel-border);
 }
 
-.mobile-toggle {
-  width: 100%;
+.mobile-brand {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 14px 16px;
-  background: none;
-  border: none;
-  cursor: pointer;
-  text-align: left;
+  gap: 10px;
+  padding: 12px 16px 8px;
 }
 
 .mobile-emblem {
-  width: 26px;
-  height: 26px;
+  width: 22px;
+  height: 22px;
   flex-shrink: 0;
   color: var(--teal);
 }
 
-.mobile-emblem svg {
+.mobile-emblem img {
   width: 100%;
   height: 100%;
   display: block;
-}
-
-.mobile-titles {
-  display: flex;
-  flex-direction: column;
-  flex: 1;
-  min-width: 0;
+  object-fit: contain;
 }
 
 .mobile-title {
   font-family: var(--font-mono);
-  font-size: 10.5px;
+  font-size: 12px;
+  font-weight: 700;
   letter-spacing: 0.05em;
-  color: var(--teal);
-}
-
-.mobile-current {
-  font-size: 15px;
-  font-weight: 600;
   color: #eef4f2;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
-.mobile-chevron {
-  color: var(--muted);
-  font-size: 13px;
-  transition: transform 0.2s ease;
-  flex-shrink: 0;
+.mobile-tabs {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 8px;
+  padding: 0 16px 12px;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
 }
 
-.mobile-toggle[aria-expanded="true"] .mobile-chevron {
-  transform: rotate(180deg);
+.mobile-tabs::-webkit-scrollbar {
+  display: none;
 }
 
-.mobile-menu {
-  max-height: 0;
-  overflow: hidden;
-  transition: max-height 0.25s ease;
-}
-
-.mobile-menu.open {
-  max-height: 420px;
-  overflow-y: auto;
-}
-
-.mobile-item {
-  width: 100%;
+.mobile-pill {
   display: flex;
   align-items: center;
-  gap: 18px;
-  padding: 12px 16px;
-  background: none;
-  border: none;
-  border-top: 1px solid rgba(255, 255, 255, 0.05);
+  gap: 6px;
+  flex-shrink: 0;
+  padding: 8px 14px;
+  background-color: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--bg-panel-border);
+  border-radius: 20px;
   cursor: pointer;
-  text-align: left;
   font-family: var(--font-sans);
-  font-size: 14px;
+  font-size: 13px;
+  font-weight: 500;
   color: var(--muted-light);
+  white-space: nowrap;
+  transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease;
 }
 
-.mobile-item .nav-num {
+.pill-num {
+  font-family: var(--font-mono);
+  font-size: 11px;
   color: var(--teal);
 }
 
-.mobile-item.active {
-  background-color: var(--teal-soft);
-  color: #eef4f2;
+.mobile-pill.active {
+  background-color: var(--teal);
+  border-color: var(--teal);
+  color: #0b1615;
+}
+
+.mobile-pill.active .pill-num {
+  color: #0b1615;
 }
 
 /* ============ ОБЛАСТЬ КОНТЕНТА ============ */
@@ -363,8 +345,7 @@ body {
   .paper-body.fade-in {
     animation: none;
   }
-  .mobile-chevron,
-  .mobile-menu,
+  .mobile-pill,
   .nav-item {
     transition: none;
   }
