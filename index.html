@@ -45,24 +45,20 @@
 
     <!-- МОБИЛЬНАЯ ШАПКА -->
     <div class="mobile-bar">
-      <button type="button" class="mobile-toggle" id="mobileToggle" aria-expanded="false" aria-controls="mobileMenu">
+      <div class="mobile-brand">
         <span class="mobile-emblem">
-          <img src="Portia2.png" alt="PORTIA" width="30" height="30">
+          <img src="Portia2.png" alt="PORTIA" width="22" height="22">
         </span>
-        <span class="mobile-titles">
-          <span class="mobile-title">PORTIA</span>
-          <span class="mobile-current" id="mobileCurrent">О отделе</span>
-        </span>
-        <span class="mobile-chevron" aria-hidden="true">⌄</span>
-      </button>
+        <span class="mobile-title">PORTIA</span>
+      </div>
 
-      <div class="mobile-menu" id="mobileMenu">
-        <button type="button" class="mobile-item active" data-target="page1"><span class="nav-num">01</span><span>О отделе</span></button>
-        <button type="button" class="mobile-item" data-target="page2"><span class="nav-num">02</span><span>Правила</span></button>
-        <button type="button" class="mobile-item" data-target="page3"><span class="nav-num">03</span><span>Норма отдела</span></button>
-        <button type="button" class="mobile-item" data-target="page4"><span class="nav-num">04</span><span>Повышения</span></button>
-        <button type="button" class="mobile-item" data-target="page5"><span class="nav-num">05</span><span>Логи</span></button>
-        <button type="button" class="mobile-item" data-target="page6"><span class="nav-num">06</span><span>Информация</span></button>
+      <div class="mobile-tabs" id="mobileTabs">
+        <button type="button" class="mobile-pill active" data-target="page1"><span class="pill-num">01</span><span>О отделе</span></button>
+        <button type="button" class="mobile-pill" data-target="page2"><span class="pill-num">02</span><span>Правила</span></button>
+        <button type="button" class="mobile-pill" data-target="page3"><span class="pill-num">03</span><span>Норма</span></button>
+        <button type="button" class="mobile-pill" data-target="page4"><span class="pill-num">04</span><span>Повышения</span></button>
+        <button type="button" class="mobile-pill" data-target="page5"><span class="pill-num">05</span><span>Логи</span></button>
+        <button type="button" class="mobile-pill" data-target="page6"><span class="pill-num">06</span><span>Инфо</span></button>
       </div>
     </div>
 
@@ -73,7 +69,6 @@
           <span class="paper-eyebrow" id="paperEyebrow">Раздел 01 из 06 — О отделе</span>
         </div>
         <div id="right-page-content" class="paper-body">
-          <!-- содержимое подставляется скриптом из sections/pageN.html -->
         </div>
       </div>
     </main>
