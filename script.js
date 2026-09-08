@@ -19,28 +19,21 @@ async function loadSection(targetId) {
   return html;
 }
 
-function closeMobileMenu() {
-  const menu = document.getElementById('mobileMenu');
-  const toggle = document.getElementById('mobileToggle');
-  if (menu) menu.classList.remove('open');
-  if (toggle) toggle.setAttribute('aria-expanded', 'false');
-}
-
 async function switchPage(targetId) {
   const meta = SECTIONS.find(s => s.id === targetId);
 
-  document.querySelectorAll('.nav-item, .mobile-item').forEach(el => {
-    el.classList.toggle('active', el.getAttribute('data-target') === targetId);
+  document.querySelectorAll('.nav-item, .mobile-pill').forEach(el => {
+    const isActive = el.getAttribute('data-target') === targetId;
+    el.classList.toggle('active', isActive);
+
+    if (isActive && el.classList.contains('mobile-pill')) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+    }
   });
 
   const eyebrow = document.getElementById('paperEyebrow');
   if (eyebrow && meta) {
     eyebrow.textContent = `Раздел ${meta.num} из ${String(SECTIONS.length).padStart(2, '0')} — ${meta.label}`;
-  }
-
-  const mobileCurrent = document.getElementById('mobileCurrent');
-  if (mobileCurrent && meta) {
-    mobileCurrent.textContent = meta.label;
   }
 
   const container = document.getElementById('right-page-content');
@@ -51,23 +44,12 @@ async function switchPage(targetId) {
   container.classList.remove('fade-in');
   void container.offsetWidth;
   container.classList.add('fade-in');
-
-  closeMobileMenu();
 }
 
 function initNavigation() {
-  document.querySelectorAll('.nav-item, .mobile-item').forEach(btn => {
+  document.querySelectorAll('.nav-item, .mobile-pill').forEach(btn => {
     btn.addEventListener('click', () => switchPage(btn.getAttribute('data-target')));
   });
-
-  const toggle = document.getElementById('mobileToggle');
-  const menu = document.getElementById('mobileMenu');
-  if (toggle && menu) {
-    toggle.addEventListener('click', () => {
-      const isOpen = menu.classList.toggle('open');
-      toggle.setAttribute('aria-expanded', String(isOpen));
-    });
-  }
 }
 
 document.addEventListener('DOMContentLoaded', () => {
