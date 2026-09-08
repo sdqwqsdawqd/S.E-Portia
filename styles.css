@@ -494,6 +494,10 @@ body {
 /* ============ МОБИЛЬНАЯ АДАПТАЦИЯ ============ */
 
 @media (max-width: 860px) {
+  .app-shell {
+    flex-direction: column;
+  }
+
   .sidebar {
     display: none;
   }
