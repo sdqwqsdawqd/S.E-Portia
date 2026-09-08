@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Устав Portia — Kurodzakura</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="styles.css">
+<link rel="icon" type="image/png" href="Portia.png">
+</head>
+
+<body>
+
+  <div class="app-shell">
+
+    <!-- БОКОВАЯ ПАНЕЛЬ (ПК) -->
+    <aside class="sidebar">
+      <div class="sidebar-header">
+        <div class="emblem">
+          <svg viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <polygon points="20,5 32.99,12.5 32.99,27.5 20,35 7.01,27.5 7.01,12.5" stroke="currentColor" stroke-width="1.6"/>
+            <circle cx="20" cy="21" r="4.5" fill="currentColor" opacity="0.9"/>
+          </svg>
+        </div>
+        <div class="wordmark">
+          <span class="wordmark-title">PORTIA</span>
+          <span class="wordmark-sub">Устав отдела</span>
+        </div>
+      </div>
+
+      <nav class="nav-list" aria-label="Разделы устава">
+        <button type="button" class="nav-item active" data-target="page1"><span class="nav-num">01</span><span>О отделе</span></button>
+        <button type="button" class="nav-item" data-target="page2"><span class="nav-num">02</span><span>Правила</span></button>
+        <button type="button" class="nav-item" data-target="page3"><span class="nav-num">03</span><span>Норма отдела</span></button>
+        <button type="button" class="nav-item" data-target="page4"><span class="nav-num">04</span><span>Повышения</span></button>
+        <button type="button" class="nav-item" data-target="page5"><span class="nav-num">05</span><span>Логи</span></button>
+        <button type="button" class="nav-item" data-target="page6"><span class="nav-num">06</span><span>Информация</span></button>
+      </nav>
+
+      <div class="sidebar-footer">
+        <span class="footer-line">KURODZAKURA CORP.</span>
+        <span class="footer-line muted">Внутренний документ отдела</span>
+      </div>
+    </aside>
+
+    <!-- МОБИЛЬНАЯ ШАПКА -->
+    <div class="mobile-bar">
+      <button type="button" class="mobile-toggle" id="mobileToggle" aria-expanded="false" aria-controls="mobileMenu">
+        <span class="mobile-emblem">
+          <svg viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <polygon points="20,5 32.99,12.5 32.99,27.5 20,35 7.01,27.5 7.01,12.5" stroke="currentColor" stroke-width="1.6"/>
+            <circle cx="20" cy="21" r="4.5" fill="currentColor" opacity="0.9"/>
+          </svg>
+        </span>
+        <span class="mobile-titles">
+          <span class="mobile-title">PORTIA</span>
+          <span class="mobile-current" id="mobileCurrent">О отделе</span>
+        </span>
+        <span class="mobile-chevron" aria-hidden="true">⌄</span>
+      </button>
+
+      <div class="mobile-menu" id="mobileMenu">
+        <button type="button" class="mobile-item active" data-target="page1"><span class="nav-num">01</span><span>О отделе</span></button>
+        <button type="button" class="mobile-item" data-target="page2"><span class="nav-num">02</span><span>Правила</span></button>
+        <button type="button" class="mobile-item" data-target="page3"><span class="nav-num">03</span><span>Норма отдела</span></button>
+        <button type="button" class="mobile-item" data-target="page4"><span class="nav-num">04</span><span>Повышения</span></button>
+        <button type="button" class="mobile-item" data-target="page5"><span class="nav-num">05</span><span>Логи</span></button>
+        <button type="button" class="mobile-item" data-target="page6"><span class="nav-num">06</span><span>Информация</span></button>
+      </div>
+    </div>
+
+    <!-- ОБЛАСТЬ КОНТЕНТА -->
+    <main class="content-area">
+      <div class="paper">
+        <div class="paper-meta">
+          <span class="paper-eyebrow" id="paperEyebrow">Раздел 01 из 06 — О отделе</span>
+        </div>
+        <div id="right-page-content" class="paper-body">
+          <!-- содержимое подставляется скриптом из sections/pageN.html -->
+        </div>
+      </div>
+    </main>
+
+  </div>
+
+  <script src="script.js"></script>
+
+</body>
+</html>
