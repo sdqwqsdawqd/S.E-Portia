@@ -467,28 +467,43 @@ body {
 }
 
 .rank-hrs {
-  color: #e6cff2;
+  background-color: #e6cff2;
+  color: var(--ink);
   font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 3px;
 }
 
 .rank-jhrs {
-  color: #e6cff2;
+  background-color: #e6cff2;
+  color: var(--ink);
   font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 3px;
 }
 
 .rank-mrs {
-  color: #ffc8aa;
+  background-color: #ffc8aa;
+  color: var(--ink);
   font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 3px;
 }
 
 .rank-jmrs {
-  color: #bfe1f6;
+  background-color: #bfe1f6;
+  color: var(--ink);
   font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 3px;
 }
 
 .rank-lrs {
-  color: #d4edbc;
+  background-color: #d4edbc;
+  color: var(--ink);
   font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 3px;
 }
 
 /* ============ МОБИЛЬНАЯ АДАПТАЦИЯ ============ */
