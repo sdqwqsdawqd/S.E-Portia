@@ -288,7 +288,6 @@ body {
   box-shadow: 0 30px 60px -24px rgba(0, 0, 0, 0.55);
   transform-style: preserve-3d;
   -webkit-transform-style: preserve-3d;
-  overflow: hidden;
 }
 
 .paper::before,
