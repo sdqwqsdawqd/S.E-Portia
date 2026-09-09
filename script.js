@@ -39,7 +39,9 @@ function waitForTransitionEnd(el, property, fallbackMs) {
         finish();
       }
     };
-    el.addEventListener('transitionend', onEnd)
+    el.addEventListener('transitionend', onEnd);
+    // подстраховка на случай, если событие transitionend не сработает
+    // (например, вкладка была неактивна или свойство не менялось)
     setTimeout(finish, fallbackMs);
   });
 }
@@ -53,51 +55,80 @@ async function switchPage(targetId) {
   const goingForward = targetIndex > currentIndex;
   isFlipping = true;
 
-  const meta = SECTIONS[targetIndex];
-  const container = document.getElementById('right-page-content');
+  // безопасная сетка: что бы ни случилось с анимацией, флаг всегда снимется
+  const safetyRelease = setTimeout(() => { isFlipping = false; }, 2000);
 
-  document.querySelectorAll('.nav-item, .mobile-pill').forEach(el => {
-    const isActive = el.getAttribute('data-target') === targetId;
-    el.classList.toggle('active', isActive);
+  try {
+    const meta = SECTIONS[targetIndex];
+    const container = document.getElementById('right-page-content');
 
-    if (isActive && el.classList.contains('mobile-pill')) {
-      el.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+    document.querySelectorAll('.nav-item, .mobile-pill').forEach(el => {
+      const isActive = el.getAttribute('data-target') === targetId;
+      el.classList.toggle('active', isActive);
+
+      if (isActive && el.classList.contains('mobile-pill')) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+      }
+    });
+
+    const eyebrow = document.getElementById('paperEyebrow');
+    if (eyebrow && meta) {
+      eyebrow.textContent = `Раздел ${meta.num} из ${String(SECTIONS.length).padStart(2, '0')} — ${meta.label}`;
     }
-  });
 
-  const eyebrow = document.getElementById('paperEyebrow');
-  if (eyebrow && meta) {
-    eyebrow.textContent = `Раздел ${meta.num} из ${String(SECTIONS.length).padStart(2, '0')} — ${meta.label}`;
-  }
+    let html;
+    try {
+      html = await loadSection(targetId);
+    } catch (err) {
+      console.error('Не удалось загрузить раздел', targetId, err);
+      currentIndex = targetIndex;
+      return; // без секции анимировать нечего — просто выходим, контент не трогаем
+    }
 
-  const html = await loadSection(targetId);
+    if (prefersReducedMotion) {
+      container.innerHTML = html;
+      currentIndex = targetIndex;
+      return;
+    }
 
-  if (prefersReducedMotion) {
+    try {
+      // Фаза 1: текущий лист "уходит" вверх (вперёд) или вниз (назад)
+      container.classList.remove('flip-in-up-start', 'flip-in-down-start');
+      container.classList.add(goingForward ? 'flip-out-up' : 'flip-out-down');
+
+      await waitForTransitionEnd(container, 'transform', 360);
+    } catch (err) {
+      console.error('Ошибка анимации (фаза ухода)', err);
+    }
+
+    // Контент подменяется в любом случае, даже если анимация выше сломалась
     container.innerHTML = html;
     currentIndex = targetIndex;
-    isFlipping = false;
-    return;
-  }
+    container.classList.remove('flip-out-up', 'flip-out-down');
 
-  container.classList.remove('flip-in-up-start', 'flip-in-down-start');
-  container.classList.add(goingForward ? 'flip-out-up' : 'flip-out-down');
+    try {
+      // Фаза 2: ставим новый лист в стартовое положение без анимации...
+      container.classList.add(goingForward ? 'flip-in-up-start' : 'flip-in-down-start');
 
-  await waitForTransitionEnd(container, 'transform', 360);
+      // ...затем на следующем кадре запускаем возврат в исходное положение
+      await new Promise((resolve) => {
+        requestAnimationFrame(() => {
+          requestAnimationFrame(() => {
+            container.classList.remove('flip-in-up-start', 'flip-in-down-start');
+            resolve();
+          });
+        });
+      });
 
-  container.innerHTML = html;
-  currentIndex = targetIndex;
-
-  container.classList.remove('flip-out-up', 'flip-out-down');
-  container.classList.add(goingForward ? 'flip-in-up-start' : 'flip-in-down-start');
-
-  requestAnimationFrame(() => {
-    requestAnimationFrame(() => {
+      await waitForTransitionEnd(container, 'transform', 400);
+    } catch (err) {
+      console.error('Ошибка анимации (фаза появления)', err);
       container.classList.remove('flip-in-up-start', 'flip-in-down-start');
-    });
-  });
-
-  await waitForTransitionEnd(container, 'transform', 400);
-  isFlipping = false;
+    }
+  } finally {
+    clearTimeout(safetyRelease);
+    isFlipping = false;
+  }
 }
 
 function initNavigation() {
