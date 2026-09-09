@@ -16,6 +16,10 @@ const prefersReducedMotion = window.matchMedia
   : false;
 
 async function loadSection(targetId) {
+  if (typeof SECTION_HTML !== 'undefined' && SECTION_HTML[targetId] !== undefined) {
+    return SECTION_HTML[targetId];
+  }
+  // запасной вариант — на случай, если sections-data.js не подключён
   if (sectionCache[targetId]) {
     return sectionCache[targetId];
   }
