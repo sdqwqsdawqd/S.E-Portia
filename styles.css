@@ -506,6 +506,22 @@ body {
   border-radius: 3px;
 }
 
+.rank-prfs {
+  background-color: #ca9ee0;
+  color: var(--ink);
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 3px;
+}
+
+.rank-ldrs {
+  background-color: #5a3286;
+  color: var(--ink);
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 3px;
+}
+
 /* ============ МОБИЛЬНАЯ АДАПТАЦИЯ ============ */
 
 @media (max-width: 860px) {
