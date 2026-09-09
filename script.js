@@ -3,37 +3,38 @@ const SECTIONS = [
   { id: 'page2', num: '02', label: 'Правила' },
   { id: 'page3', num: '03', label: 'Норма отдела' },
   { id: 'page4', num: '04', label: 'Повышения' },
-  { id: 'page5', num: '05', label: 'Логи' },
-  { id: 'page6', num: '06', label: 'Информация' },
+  { id: 'page5', num: '05', label: 'Информация' },
+  { id: 'page6', num: '06', label: 'Логи' },
 ];
 
 const sectionCache = {};
-let currentIndex = 0;
-let isFlipping = false;
-
-const prefersReducedMotion = window.matchMedia
-  ? window.matchMedia('(prefers-reduced-motion: reduce)').matches
-  : false;
-
+let currentIndex = -1;
 async function loadSection(targetId) {
   if (typeof SECTION_HTML !== 'undefined' && SECTION_HTML[targetId] !== undefined) {
     return SECTION_HTML[targetId];
   }
-  if (sectionCache[targetId]) return sectionCache[targetId];
-
+  
+  if (sectionCache[targetId]) {
+    return sectionCache[targetId];
+  }
   const res = await fetch(`sections/${targetId}.html`);
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
   const html = await res.text();
   sectionCache[targetId] = html;
   return html;
 }
 
-function updateNavigation(targetId) {
-  document.querySelectorAll('.nav-item, .mobile-pill').forEach(el => {
-    const active = el.dataset.target === targetId;
-    el.classList.toggle('active', active);
+async function switchPage(targetId) {
+  const targetIndex = SECTIONS.findIndex(s => s.id === targetId);
+  if (targetIndex === -1 || targetIndex === currentIndex) return;
 
-    if (active && el.classList.contains('mobile-pill')) {
+  const meta = SECTIONS[targetIndex];
+  const container = document.getElementById('right-page-content');
+
+  document.querySelectorAll('.nav-item, .mobile-pill').forEach(el => {
+    const isActive = el.getAttribute('data-target') === targetId;
+    el.classList.toggle('active', isActive);
+
+    if (isActive && el.classList.contains('mobile-pill')) {
       el.scrollIntoView({
         behavior: 'smooth',
         block: 'nearest',
@@ -41,208 +42,134 @@ function updateNavigation(targetId) {
       });
     }
   });
-}
 
-function updateEyebrow(meta) {
+  const activeItem = document.querySelector(
+    `.nav-item[data-target="${targetId}"]`
+  );
+
+  updateSpiderTrail(activeItem);
+
   const eyebrow = document.getElementById('paperEyebrow');
-  if (eyebrow) {
-    eyebrow.textContent =
-      `Раздел ${meta.num} из ${String(SECTIONS.length).padStart(2, '0')} — ${meta.label}`;
+  const sectionNumber = document.getElementById('paperSectionNumber');
+  if (sectionNumber && meta) {
+    sectionNumber.textContent = meta.num;
   }
-}
-
-function nextFrame() {
-  return new Promise(resolve => requestAnimationFrame(resolve));
-}
-
-async function switchPage(targetId, directionOverride = null) {
-  if (isFlipping) return;
-
-  const targetIndex = SECTIONS.findIndex(s => s.id === targetId);
-  if (targetIndex < 0 || targetIndex === currentIndex) return;
-
-  const direction = directionOverride || (targetIndex > currentIndex ? 'up' : 'down');
-  const container = document.getElementById('right-page-content');
-  const meta = SECTIONS[targetIndex];
-
-  if (!container) return;
-
-  isFlipping = true;
+  if (eyebrow && meta) {
+    eyebrow.textContent = `Раздел ${meta.num} из ${String(SECTIONS.length).padStart(2, '0')} — ${meta.label}`;
+  }
 
   try {
     const html = await loadSection(targetId);
-
-    updateNavigation(targetId);
-    updateEyebrow(meta);
-
-    if (prefersReducedMotion) {
-      container.innerHTML = html;
-      currentIndex = targetIndex;
-      return;
-    }
-
-    // 1. Старый лист уходит вверх при переходе вперёд
-    //    и вниз при переходе назад.
-    container.classList.remove(
-      'flip-in-up-start',
-      'flip-in-down-start',
-      'flip-out-up',
-      'flip-out-down'
-    );
-
-    // Принудительно применяем исходное состояние перед новой анимацией.
-    void container.offsetHeight;
-
-    container.classList.add(
-      direction === 'up' ? 'flip-out-up' : 'flip-out-down'
-    );
-
-    await nextFrame();
-    await new Promise(resolve => {
-      const onEnd = event => {
-        if (event.target !== container || event.propertyName !== 'transform') return;
-        container.removeEventListener('transitionend', onEnd);
-        resolve();
-      };
-
-      container.addEventListener('transitionend', onEnd);
-      setTimeout(() => {
-        container.removeEventListener('transitionend', onEnd);
-        resolve();
-      }, 500);
-    });
-
-    // 2. Меняем содержимое, пока лист находится за пределами видимой области.
     container.innerHTML = html;
     currentIndex = targetIndex;
-
-    container.classList.remove('flip-out-up', 'flip-out-down');
-
-    // Принудительный reflow — критично для Safari/iOS и некоторых Android-браузеров.
-    void container.offsetHeight;
-
-    // Новый лист приходит с противоположной стороны.
-    container.classList.add(
-      direction === 'up' ? 'flip-in-up-start' : 'flip-in-down-start'
-    );
-
-    void container.offsetHeight;
-
-    await nextFrame();
-
-    container.classList.remove(
-      'flip-in-up-start',
-      'flip-in-down-start'
-    );
-
-    await new Promise(resolve => {
-      const onEnd = event => {
-        if (event.target !== container || event.propertyName !== 'transform') return;
-        container.removeEventListener('transitionend', onEnd);
-        resolve();
-      };
-
-      container.addEventListener('transitionend', onEnd);
-      setTimeout(() => {
-        container.removeEventListener('transitionend', onEnd);
-        resolve();
-      }, 500);
-    });
-
-  } catch (error) {
-    console.error('Не удалось переключить раздел:', error);
-    // Если анимация/загрузка сломалась, всё равно показываем страницу.
-    try {
-      const html = await loadSection(targetId);
-      container.innerHTML = html;
-      currentIndex = targetIndex;
-      updateNavigation(targetId);
-      updateEyebrow(meta);
-    } catch (fallbackError) {
-      console.error('Не удалось показать раздел:', fallbackError);
-    }
-  } finally {
-    container.classList.remove(
-      'flip-out-up',
-      'flip-out-down',
-      'flip-in-up-start',
-      'flip-in-down-start'
-    );
-    isFlipping = false;
+  } catch (err) {
+    console.error('Не удалось загрузить раздел', targetId, err);
   }
-}
-
-function goRelative(step) {
-  const targetIndex = currentIndex + step;
-  if (targetIndex < 0 || targetIndex >= SECTIONS.length) return;
-
-  switchPage(SECTIONS[targetIndex].id, step > 0 ? 'up' : 'down');
 }
 
 function initNavigation() {
   document.querySelectorAll('.nav-item, .mobile-pill').forEach(btn => {
-    btn.addEventListener('click', () => {
-      switchPage(btn.dataset.target);
-    });
+    btn.addEventListener('click', () => switchPage(btn.getAttribute('data-target')));
   });
 }
 
-function initSwipeNavigation() {
-  const area = document.querySelector('.content-area');
-  if (!area) return;
-
-  let startX = 0;
-  let startY = 0;
-  let startTime = 0;
-
-  area.addEventListener('touchstart', event => {
-    if (event.touches.length !== 1) return;
-
-    const touch = event.touches[0];
-    startX = touch.clientX;
-    startY = touch.clientY;
-    startTime = Date.now();
-  }, { passive: true });
-
-  area.addEventListener('touchend', event => {
-    if (isFlipping || !event.changedTouches.length) return;
-
-    const touch = event.changedTouches[0];
-    const dx = touch.clientX - startX;
-    const dy = touch.clientY - startY;
-    const duration = Date.now() - startTime;
-
-    // Только быстрый вертикальный свайп.
-    // Это не мешает обычной прокрутке длинных страниц.
-    const isVertical = Math.abs(dy) > Math.abs(dx) * 1.35;
-    const isSwipe = Math.abs(dy) >= 60 && duration <= 700;
-
-    if (!isVertical || !isSwipe) return;
-
-    if (dy < 0) {
-      // Свайп вверх -> следующий лист.
-      goRelative(1);
-    } else {
-      // Свайп вниз -> предыдущий лист.
-      goRelative(-1);
-    }
-  }, { passive: true });
-}
-
-document.addEventListener('DOMContentLoaded', async () => {
+document.addEventListener('DOMContentLoaded', () => {
   initNavigation();
-  initSwipeNavigation();
-
-  const first = SECTIONS[0];
-  const container = document.getElementById('right-page-content');
-
-  try {
-    container.innerHTML = await loadSection(first.id);
-  } catch (error) {
-    console.error('Не удалось загрузить первый раздел:', error);
-  }
-
-  currentIndex = 0;
-  updateNavigation(first.id);
-  updateEyebrow(first);
+  switchPage('page1');
 });
+
+
+function updateSpiderTrail(activeItem) {
+  // Удаляем старого паука
+  document.querySelectorAll('.spider-trail').forEach(spider => {
+    spider.remove();
+  });
+
+  // Если активного пункта нет — ничего не делаем
+  if (!activeItem) return;
+
+  // Контейнер паука
+  const spider = document.createElement('span');
+  spider.className = 'spider-trail';
+  spider.setAttribute('aria-hidden', 'true');
+
+  spider.innerHTML = `
+    <svg viewBox="0 0 30 30">
+
+      <!-- левая верхняя лапа -->
+      <path
+        class="spider-leg"
+        d="M13 12 L7 7 L2 8"
+      />
+
+      <!-- левая средняя верхняя -->
+      <path
+        class="spider-leg"
+        d="M12 14 L6 12 L1 13"
+      />
+
+      <!-- левая средняя нижняя -->
+      <path
+        class="spider-leg"
+        d="M12 17 L6 18 L2 21"
+      />
+
+      <!-- левая нижняя лапа -->
+      <path
+        class="spider-leg"
+        d="M14 19 L9 23 L5 27"
+      />
+
+      <!-- правая верхняя лапа -->
+      <path
+        class="spider-leg"
+        d="M17 12 L23 7 L28 8"
+      />
+
+      <!-- правая средняя верхняя -->
+      <path
+        class="spider-leg"
+        d="M18 14 L24 12 L29 13"
+      />
+
+      <!-- правая средняя нижняя -->
+      <path
+        class="spider-leg"
+        d="M18 17 L24 18 L28 21"
+      />
+
+      <!-- правая нижняя лапа -->
+      <path
+        class="spider-leg"
+        d="M16 19 L21 23 L25 27"
+      />
+
+      <!-- тело -->
+      <ellipse
+        class="spider-body"
+        cx="15"
+        cy="15"
+        rx="4"
+        ry="5"
+      />
+
+      <!-- глаза -->
+      <circle
+        class="spider-eye"
+        cx="13.5"
+        cy="13"
+        r="0.8"
+      />
+
+      <circle
+        class="spider-eye"
+        cx="16.5"
+        cy="13"
+        r="0.8"
+      />
+
+    </svg>
+  `;
+
+  activeItem.appendChild(spider);
+}

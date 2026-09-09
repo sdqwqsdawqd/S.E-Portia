@@ -6,6 +6,7 @@
   --bg-panel-border: #1e2f2d;
   --paper: #f6f3ea;
   --paper-edge: #e2ddcd;
+  --paper-shadow-edge: #d8d2c2;
   --ink: #1c2422;
   --ink-soft: #37443f;
   --muted: #7c8b86;
@@ -39,6 +40,10 @@ html, body {
 
 body {
   background-color: var(--bg-deep);
+  background-image:
+    linear-gradient(rgba(255,255,255,0.018) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255,255,255,0.014) 1px, transparent 1px);
+  background-size: 32px 32px;
   font-family: var(--font-sans);
   color: var(--ink);
   min-height: 100vh;
@@ -177,6 +182,8 @@ body {
   color: var(--muted);
 }
 
+
+
 /* ============ МОБИЛЬНАЯ ШАПКА ============ */
 
 .mobile-bar {
@@ -273,8 +280,6 @@ body {
   display: flex;
   justify-content: center;
   padding: 56px 48px 80px;
-  perspective: 1800px;
-  -webkit-perspective: 1800px;
 }
 
 .paper {
@@ -285,9 +290,10 @@ body {
   background-color: var(--paper);
   border: 1px solid var(--paper-edge);
   padding: 48px 56px;
-  box-shadow: 0 30px 60px -24px rgba(0, 0, 0, 0.55);
-  transform-style: preserve-3d;
-  -webkit-transform-style: preserve-3d;
+  box-shadow:
+    0 30px 60px -24px rgba(0, 0, 0, 0.55),
+    5px 6px 0 -1px var(--paper-shadow-edge),
+    9px 11px 0 -2px #cfc8b8;
 }
 
 .paper::before,
@@ -315,6 +321,10 @@ body {
 
 .paper-meta {
   margin-bottom: 28px;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 20px;
   padding-bottom: 16px;
   border-bottom: 1px dashed rgba(18, 137, 122, 0.35);
 }
@@ -326,68 +336,28 @@ body {
   color: var(--teal-deep);
 }
 
-.paper-body {
-  position: relative;
-  opacity: 1;
-  transform: translate3d(0, 0, 0) rotateX(0deg);
-  transform-origin: 50% 50%;
-  backface-visibility: hidden;
-  -webkit-backface-visibility: hidden;
-  transform-style: preserve-3d;
-  -webkit-transform-style: preserve-3d;
-  will-change: transform, opacity;
-  transition:
-    transform 0.42s cubic-bezier(0.45, 0, 0.2, 1),
-    opacity 0.30s ease;
+.section-mark {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 9px;
+  flex-shrink: 0;
 }
 
-/* Следующий лист: текущий лист переворачивается вверх. */
-.paper-body.flip-out-up {
-  transform: translate3d(0, -18px, 0) rotateX(-88deg);
-  transform-origin: 50% 0%;
-  opacity: 0;
+.section-number {
+  font-family: var(--font-mono);
+  font-size: 24px;
+  line-height: 1;
+  font-weight: 700;
+  letter-spacing: -0.04em;
+  color: var(--ink);
 }
 
-/* Предыдущий лист: текущий лист переворачивается вниз. */
-.paper-body.flip-out-down {
-  transform: translate3d(0, 18px, 0) rotateX(88deg);
-  transform-origin: 50% 100%;
-  opacity: 0;
-}
-
-/* Новый лист появляется снизу и раскрывается вверх. */
-.paper-body.flip-in-up-start {
-  transition: none;
-  transform: translate3d(0, 24px, 0) rotateX(88deg);
-  transform-origin: 50% 100%;
-  opacity: 0;
-}
-
-/* Новый лист появляется сверху и раскрывается вниз. */
-.paper-body.flip-in-down-start {
-  transition: none;
-  transform: translate3d(0, -24px, 0) rotateX(-88deg);
-  transform-origin: 50% 0%;
-  opacity: 0;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .paper-body {
-    transition: opacity 0.2s ease;
-    transform: none !important;
-  }
-
-  .paper-body.flip-out-up,
-  .paper-body.flip-out-down,
-  .paper-body.flip-in-up-start,
-  .paper-body.flip-in-down-start {
-    transform: none !important;
-  }
-
-  .mobile-pill,
-  .nav-item {
-    transition: none;
-  }
+.section-label {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  color: var(--teal-deep);
 }
 
 /* ============ КОНТЕНТ РАЗДЕЛОВ (используется в sections/pageN.html) ============ */
@@ -563,28 +533,6 @@ body {
 
 /* ============ МОБИЛЬНАЯ АДАПТАЦИЯ ============ */
 
-/* На телефоне свайпы работают как перелистывание страниц. */
-.content-area {
-  touch-action: pan-y;
-}
-
-@media (max-width: 860px) {
-  .content-area {
-    overflow-x: hidden;
-    perspective: 1100px;
-    -webkit-perspective: 1100px;
-  }
-
-  .paper {
-    transform-style: preserve-3d;
-    -webkit-transform-style: preserve-3d;
-  }
-
-  .paper-body {
-    transform: translate3d(0, 0, 0) rotateX(0deg);
-  }
-}
-
 @media (max-width: 860px) {
   .app-shell {
     flex-direction: column;
@@ -604,6 +552,20 @@ body {
 
   .paper {
     padding: 30px 22px;
+    box-shadow:
+      0 20px 42px -20px rgba(0, 0, 0, 0.55),
+      4px 5px 0 -1px var(--paper-shadow-edge),
+      7px 9px 0 -2px #cfc8b8;
+  }
+
+  .paper-meta {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .section-number {
+    font-size: 21px;
   }
 
   .paper::before,
@@ -626,3 +588,4 @@ body {
     padding: 24px 16px;
   }
 }
+
