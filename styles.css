@@ -275,21 +275,12 @@ body {
   padding: 56px 48px 80px;
   perspective: 1800px;
   -webkit-perspective: 1800px;
-  overflow: visible;
-}
-
-/* Стопка настоящих листов. Каждый pageN становится отдельным физическим листом. */
-.paper-stage {
-  position: relative;
-  width: 100%;
-  max-width: 740px;
-  isolation: isolate;
 }
 
 .paper {
   position: relative;
-  z-index: 1;
   width: 100%;
+  max-width: 740px;
   height: fit-content;
   background-color: var(--paper);
   border: 1px solid var(--paper-edge);
@@ -297,10 +288,6 @@ body {
   box-shadow: 0 30px 60px -24px rgba(0, 0, 0, 0.55);
   transform-style: preserve-3d;
   -webkit-transform-style: preserve-3d;
-  backface-visibility: hidden;
-  -webkit-backface-visibility: hidden;
-  transform-origin: 50% 50%;
-  will-change: transform, opacity;
 }
 
 .paper::before,
@@ -340,81 +327,63 @@ body {
 }
 
 .paper-body {
+  position: relative;
   opacity: 1;
-}
-
-/* Новый лист входит снизу при движении вперёд и сверху при движении назад. */
-.paper-incoming {
-  position: absolute;
-  inset: 0;
-  z-index: 3;
-  transition: transform 0.56s cubic-bezier(0.22, 0.75, 0.18, 1),
-              opacity 0.46s ease,
-              box-shadow 0.56s ease;
-}
-
-.paper-in-from-down {
-  transform: translate3d(0, 72%, 0) rotateX(-13deg) scaleY(0.985);
-  transform-origin: 50% 0%;
-  opacity: 0.35;
-  box-shadow: 0 42px 70px -24px rgba(0,0,0,.68);
-}
-
-.paper-in-from-up {
-  transform: translate3d(0, -72%, 0) rotateX(13deg) scaleY(0.985);
-  transform-origin: 50% 100%;
-  opacity: 0.35;
-  box-shadow: 0 -42px 70px -24px rgba(0,0,0,.68);
-}
-
-.paper-in-active {
-  transform: translate3d(0, 0, 0) rotateX(0deg) scaleY(1);
-  opacity: 1;
-  box-shadow: 0 30px 60px -24px rgba(0,0,0,.55);
-}
-
-/* Старый лист реально перелистывается, а не его внутренний текст. */
-.paper-outgoing {
-  position: absolute;
-  inset: 0;
-  z-index: 4;
-  transition: transform 0.56s cubic-bezier(0.65, 0, 0.2, 1),
-              opacity 0.46s ease,
-              box-shadow 0.56s ease;
-}
-
-.paper-out-up {
-  transform-origin: 50% 0%;
   transform: translate3d(0, 0, 0) rotateX(0deg);
+  transform-origin: 50% 50%;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+  transform-style: preserve-3d;
+  -webkit-transform-style: preserve-3d;
+  will-change: transform, opacity;
+  transition:
+    transform 0.42s cubic-bezier(0.45, 0, 0.2, 1),
+    opacity 0.30s ease;
 }
 
-.paper-out-down {
+/* Следующий лист: текущий лист переворачивается вверх. */
+.paper-body.flip-out-up {
+  transform: translate3d(0, -18px, 0) rotateX(-88deg);
+  transform-origin: 50% 0%;
+  opacity: 0;
+}
+
+/* Предыдущий лист: текущий лист переворачивается вниз. */
+.paper-body.flip-out-down {
+  transform: translate3d(0, 18px, 0) rotateX(88deg);
   transform-origin: 50% 100%;
-  transform: translate3d(0, 0, 0) rotateX(0deg);
+  opacity: 0;
 }
 
-.paper-out-up.paper-out-active {
-  transform: translate3d(0, -82%, 0) rotateX(16deg) scaleY(.985);
-  opacity: .25;
-  box-shadow: 0 -36px 70px -24px rgba(0,0,0,.65);
+/* Новый лист появляется снизу и раскрывается вверх. */
+.paper-body.flip-in-up-start {
+  transition: none;
+  transform: translate3d(0, 24px, 0) rotateX(88deg);
+  transform-origin: 50% 100%;
+  opacity: 0;
 }
 
-.paper-out-down.paper-out-active {
-  transform: translate3d(0, 82%, 0) rotateX(-16deg) scaleY(.985);
-  opacity: .25;
-  box-shadow: 0 36px 70px -24px rgba(0,0,0,.65);
+/* Новый лист появляется сверху и раскрывается вниз. */
+.paper-body.flip-in-down-start {
+  transition: none;
+  transform: translate3d(0, -24px, 0) rotateX(-88deg);
+  transform-origin: 50% 0%;
+  opacity: 0;
 }
 
 @media (prefers-reduced-motion: reduce) {
   .paper-body {
     transition: opacity 0.2s ease;
+    transform: none !important;
   }
+
   .paper-body.flip-out-up,
   .paper-body.flip-out-down,
   .paper-body.flip-in-up-start,
   .paper-body.flip-in-down-start {
-    transform: none;
+    transform: none !important;
   }
+
   .mobile-pill,
   .nav-item {
     transition: none;
@@ -593,6 +562,28 @@ body {
 }
 
 /* ============ МОБИЛЬНАЯ АДАПТАЦИЯ ============ */
+
+/* На телефоне свайпы работают как перелистывание страниц. */
+.content-area {
+  touch-action: pan-y;
+}
+
+@media (max-width: 860px) {
+  .content-area {
+    overflow-x: hidden;
+    perspective: 1100px;
+    -webkit-perspective: 1100px;
+  }
+
+  .paper {
+    transform-style: preserve-3d;
+    -webkit-transform-style: preserve-3d;
+  }
+
+  .paper-body {
+    transform: translate3d(0, 0, 0) rotateX(0deg);
+  }
+}
 
 @media (max-width: 860px) {
   .app-shell {
