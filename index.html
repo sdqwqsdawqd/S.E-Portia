@@ -6,28 +6,21 @@
 <title>Устав Portia — Kurodzakura</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="styles.css?v=3">
+<link rel="stylesheet" href="styles.css?v=4">
 <link rel="icon" type="image/png" href="Portia.png">
 </head>
-
 <body>
-
   <div class="app-shell">
-
-    <!-- БОКОВАЯ ПАНЕЛЬ (ПК) -->
     <aside class="sidebar">
       <div class="sidebar-header">
         <div class="emblem">
-          <div class="emblem">
-  <img src="Portia2.png" alt="PORTIA" width="50" height="50">
-          </div>
+          <div class="emblem"><img src="Portia2.png" alt="PORTIA" width="50" height="50"></div>
         </div>
         <div class="wordmark">
           <span class="wordmark-title">PORTIA</span>
           <span class="wordmark-sub">Устав отдела</span>
         </div>
       </div>
-
       <nav class="nav-list" aria-label="Разделы устава">
         <button type="button" class="nav-item active" data-target="page1"><span class="nav-num">01</span><span>О отделе</span></button>
         <button type="button" class="nav-item" data-target="page2"><span class="nav-num">02</span><span>Правила</span></button>
@@ -36,22 +29,17 @@
         <button type="button" class="nav-item" data-target="page5"><span class="nav-num">05</span><span>Логи</span></button>
         <button type="button" class="nav-item" data-target="page6"><span class="nav-num">06</span><span>Информация</span></button>
       </nav>
-
       <div class="sidebar-footer">
         <span class="footer-line">KURODZAKURA S.E.</span>
         <span class="footer-line muted">Внутренний устав отдела "Portia"</span>
       </div>
     </aside>
 
-    <!-- МОБИЛЬНАЯ ШАПКА -->
     <div class="mobile-bar">
       <div class="mobile-brand">
-        <span class="mobile-emblem">
-          <img src="Portia2.png" alt="PORTIA" width="22" height="22">
-        </span>
+        <span class="mobile-emblem"><img src="Portia2.png" alt="PORTIA" width="22" height="22"></span>
         <span class="mobile-title">PORTIA</span>
       </div>
-
       <div class="mobile-tabs" id="mobileTabs">
         <button type="button" class="mobile-pill active" data-target="page1"><span class="pill-num">01</span><span>О отделе</span></button>
         <button type="button" class="mobile-pill" data-target="page2"><span class="pill-num">02</span><span>Правила</span></button>
@@ -62,22 +50,16 @@
       </div>
     </div>
 
-    <!-- ОБЛАСТЬ КОНТЕНТА -->
     <main class="content-area">
-      <div class="paper">
-        <div class="paper-meta">
-          <span class="paper-eyebrow" id="paperEyebrow">Раздел 01 из 06 — О отделе</span>
-        </div>
-        <div id="right-page-content" class="paper-body">
-          <!-- содержимое подставляется скриптом из sections/pageN.html -->
-        </div>
+      <div id="paper-stage" class="paper-stage" aria-live="polite">
+        <article class="paper" id="paper">
+          <div class="paper-meta"><span class="paper-eyebrow" id="paperEyebrow">Раздел 01 из 06 — О отделе</span></div>
+          <div id="right-page-content" class="paper-body"></div>
+        </article>
       </div>
     </main>
-
   </div>
-
-  <script src="sections-data.js?v=3"></script>
-  <script src="script.js?v=3"></script>
-
+  <script src="sections-data.js?v=4"></script>
+  <script src="script.js?v=4"></script>
 </body>
 </html>

@@ -7,242 +7,164 @@ const SECTIONS = [
   { id: 'page6', num: '06', label: 'Информация' },
 ];
 
-const sectionCache = {};
 let currentIndex = 0;
 let isFlipping = false;
+let touchStartY = null;
+let touchStartX = null;
 
-const prefersReducedMotion = window.matchMedia
-  ? window.matchMedia('(prefers-reduced-motion: reduce)').matches
-  : false;
+const reduceMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
+const TRANSITION_MS = 560;
 
-async function loadSection(targetId) {
-  if (typeof SECTION_HTML !== 'undefined' && SECTION_HTML[targetId] !== undefined) {
-    return SECTION_HTML[targetId];
-  }
-  if (sectionCache[targetId]) return sectionCache[targetId];
-
-  const res = await fetch(`sections/${targetId}.html`);
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  const html = await res.text();
-  sectionCache[targetId] = html;
-  return html;
+function getHtml(targetId) {
+  if (typeof SECTION_HTML !== 'undefined' && SECTION_HTML[targetId] !== undefined) return SECTION_HTML[targetId];
+  return fetch(`sections/${targetId}.html`).then(r => {
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    return r.text();
+  });
 }
 
 function updateNavigation(targetId) {
   document.querySelectorAll('.nav-item, .mobile-pill').forEach(el => {
     const active = el.dataset.target === targetId;
     el.classList.toggle('active', active);
-
     if (active && el.classList.contains('mobile-pill')) {
-      el.scrollIntoView({
-        behavior: 'smooth',
-        block: 'nearest',
-        inline: 'center'
-      });
+      el.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
     }
   });
 }
 
-function updateEyebrow(meta) {
-  const eyebrow = document.getElementById('paperEyebrow');
-  if (eyebrow) {
-    eyebrow.textContent =
-      `Раздел ${meta.num} из ${String(SECTIONS.length).padStart(2, '0')} — ${meta.label}`;
-  }
+function setMeta(targetIndex) {
+  const meta = SECTIONS[targetIndex];
+  document.getElementById('paperEyebrow').textContent =
+    `Раздел ${meta.num} из ${String(SECTIONS.length).padStart(2, '0')} — ${meta.label}`;
 }
 
-function nextFrame() {
-  return new Promise(resolve => requestAnimationFrame(resolve));
+function forceReflow(el) {
+  void el.offsetWidth;
 }
 
-async function switchPage(targetId, directionOverride = null) {
+function wait(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+async function switchPage(targetId) {
   if (isFlipping) return;
-
   const targetIndex = SECTIONS.findIndex(s => s.id === targetId);
   if (targetIndex < 0 || targetIndex === currentIndex) return;
 
-  const direction = directionOverride || (targetIndex > currentIndex ? 'up' : 'down');
-  const container = document.getElementById('right-page-content');
-  const meta = SECTIONS[targetIndex];
-
-  if (!container) return;
+  const stage = document.getElementById('paper-stage');
+  const oldPaper = document.getElementById('paper');
+  if (!stage || !oldPaper) return;
 
   isFlipping = true;
+  const forward = targetIndex > currentIndex;
+  updateNavigation(targetId);
 
   try {
-    const html = await loadSection(targetId);
+    const html = await getHtml(targetId);
+    const newMeta = SECTIONS[targetIndex];
 
-    updateNavigation(targetId);
-    updateEyebrow(meta);
-
-    if (prefersReducedMotion) {
-      container.innerHTML = html;
+    if (reduceMotion) {
+      oldPaper.querySelector('.paper-body').innerHTML = html;
+      setMeta(targetIndex);
       currentIndex = targetIndex;
       return;
     }
 
-    // 1. Старый лист уходит вверх при переходе вперёд
-    //    и вниз при переходе назад.
-    container.classList.remove(
-      'flip-in-up-start',
-      'flip-in-down-start',
-      'flip-out-up',
-      'flip-out-down'
-    );
+    // Запоминаем размеры текущего листа, чтобы новая страница не прыгала по высоте.
+    const oldHeight = oldPaper.getBoundingClientRect().height;
 
-    // Принудительно применяем исходное состояние перед новой анимацией.
-    void container.offsetHeight;
+    // Делаем новый физический лист. Старый и новый существуют одновременно.
+    const newPaper = oldPaper.cloneNode(true);
+    newPaper.id = 'paper';
+    newPaper.querySelector('.paper-eyebrow').textContent =
+      `Раздел ${newMeta.num} из ${String(SECTIONS.length).padStart(2, '0')} — ${newMeta.label}`;
+    newPaper.querySelector('.paper-body').innerHTML = html;
+    newPaper.classList.add('paper-incoming');
 
-    container.classList.add(
-      direction === 'up' ? 'flip-out-up' : 'flip-out-down'
-    );
+    oldPaper.classList.add('paper-outgoing', forward ? 'paper-out-up' : 'paper-out-down');
+    stage.appendChild(newPaper);
 
-    await nextFrame();
-    await new Promise(resolve => {
-      const onEnd = event => {
-        if (event.target !== container || event.propertyName !== 'transform') return;
-        container.removeEventListener('transitionend', onEnd);
-        resolve();
-      };
+    // Ставим новый лист на противоположную сторону и только после reflow включаем transition.
+    newPaper.classList.add(forward ? 'paper-in-from-down' : 'paper-in-from-up');
+    stage.style.minHeight = `${Math.max(oldHeight, newPaper.offsetHeight)}px`;
+    forceReflow(stage);
 
-      container.addEventListener('transitionend', onEnd);
-      setTimeout(() => {
-        container.removeEventListener('transitionend', onEnd);
-        resolve();
-      }, 500);
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        oldPaper.classList.add('paper-out-active');
+        newPaper.classList.remove('paper-in-from-down', 'paper-in-from-up');
+        newPaper.classList.add('paper-in-active');
+      });
     });
 
-    // 2. Меняем содержимое, пока лист находится за пределами видимой области.
-    container.innerHTML = html;
+    await wait(TRANSITION_MS + 60);
+
+    // Новый лист становится обычным листом, старый удаляем.
+    oldPaper.remove();
+    newPaper.classList.remove('paper-incoming', 'paper-in-active');
+    stage.style.minHeight = '';
     currentIndex = targetIndex;
-
-    container.classList.remove('flip-out-up', 'flip-out-down');
-
-    // Принудительный reflow — критично для Safari/iOS и некоторых Android-браузеров.
-    void container.offsetHeight;
-
-    // Новый лист приходит с противоположной стороны.
-    container.classList.add(
-      direction === 'up' ? 'flip-in-up-start' : 'flip-in-down-start'
-    );
-
-    void container.offsetHeight;
-
-    await nextFrame();
-
-    container.classList.remove(
-      'flip-in-up-start',
-      'flip-in-down-start'
-    );
-
-    await new Promise(resolve => {
-      const onEnd = event => {
-        if (event.target !== container || event.propertyName !== 'transform') return;
-        container.removeEventListener('transitionend', onEnd);
-        resolve();
-      };
-
-      container.addEventListener('transitionend', onEnd);
-      setTimeout(() => {
-        container.removeEventListener('transitionend', onEnd);
-        resolve();
-      }, 500);
-    });
-
   } catch (error) {
-    console.error('Не удалось переключить раздел:', error);
-    // Если анимация/загрузка сломалась, всё равно показываем страницу.
-    try {
-      const html = await loadSection(targetId);
-      container.innerHTML = html;
-      currentIndex = targetIndex;
-      updateNavigation(targetId);
-      updateEyebrow(meta);
-    } catch (fallbackError) {
-      console.error('Не удалось показать раздел:', fallbackError);
-    }
+    console.error('Ошибка перелистывания:', error);
+    // В случае ошибки всё равно показываем страницу.
+    oldPaper.querySelector('.paper-body').innerHTML = await getHtml(targetId);
+    setMeta(targetIndex);
+    currentIndex = targetIndex;
   } finally {
-    container.classList.remove(
-      'flip-out-up',
-      'flip-out-down',
-      'flip-in-up-start',
-      'flip-in-down-start'
-    );
     isFlipping = false;
   }
 }
 
-function goRelative(step) {
-  const targetIndex = currentIndex + step;
-  if (targetIndex < 0 || targetIndex >= SECTIONS.length) return;
+function goNext() {
+  if (currentIndex < SECTIONS.length - 1) switchPage(SECTIONS[currentIndex + 1].id);
+}
 
-  switchPage(SECTIONS[targetIndex].id, step > 0 ? 'up' : 'down');
+function goPrev() {
+  if (currentIndex > 0) switchPage(SECTIONS[currentIndex - 1].id);
+}
+
+function initTouch() {
+  const stage = document.getElementById('paper-stage');
+  if (!stage) return;
+
+  stage.addEventListener('touchstart', e => {
+    if (isFlipping || e.touches.length !== 1) return;
+    touchStartY = e.touches[0].clientY;
+    touchStartX = e.touches[0].clientX;
+  }, { passive: true });
+
+  stage.addEventListener('touchend', e => {
+    if (isFlipping || touchStartY === null || e.changedTouches.length !== 1) return;
+    const dy = e.changedTouches[0].clientY - touchStartY;
+    const dx = e.changedTouches[0].clientX - touchStartX;
+    touchStartY = touchStartX = null;
+
+    // Горизонтальные жесты и маленькие движения оставляем браузеру.
+    if (Math.abs(dy) < 55 || Math.abs(dy) < Math.abs(dx) * 1.15) return;
+    if (dy < 0) goNext();
+    else goPrev();
+  }, { passive: true });
 }
 
 function initNavigation() {
   document.querySelectorAll('.nav-item, .mobile-pill').forEach(btn => {
-    btn.addEventListener('click', () => {
-      switchPage(btn.dataset.target);
-    });
+    btn.addEventListener('click', () => switchPage(btn.dataset.target));
   });
-}
 
-function initSwipeNavigation() {
-  const area = document.querySelector('.content-area');
-  if (!area) return;
-
-  let startX = 0;
-  let startY = 0;
-  let startTime = 0;
-
-  area.addEventListener('touchstart', event => {
-    if (event.touches.length !== 1) return;
-
-    const touch = event.touches[0];
-    startX = touch.clientX;
-    startY = touch.clientY;
-    startTime = Date.now();
-  }, { passive: true });
-
-  area.addEventListener('touchend', event => {
-    if (isFlipping || !event.changedTouches.length) return;
-
-    const touch = event.changedTouches[0];
-    const dx = touch.clientX - startX;
-    const dy = touch.clientY - startY;
-    const duration = Date.now() - startTime;
-
-    // Только быстрый вертикальный свайп.
-    // Это не мешает обычной прокрутке длинных страниц.
-    const isVertical = Math.abs(dy) > Math.abs(dx) * 1.35;
-    const isSwipe = Math.abs(dy) >= 60 && duration <= 700;
-
-    if (!isVertical || !isSwipe) return;
-
-    if (dy < 0) {
-      // Свайп вверх -> следующий лист.
-      goRelative(1);
-    } else {
-      // Свайп вниз -> предыдущий лист.
-      goRelative(-1);
-    }
-  }, { passive: true });
+  document.addEventListener('keydown', e => {
+    if (e.key === 'ArrowDown' || e.key === 'PageDown') { e.preventDefault(); goNext(); }
+    if (e.key === 'ArrowUp' || e.key === 'PageUp') { e.preventDefault(); goPrev(); }
+  });
 }
 
 document.addEventListener('DOMContentLoaded', async () => {
   initNavigation();
-  initSwipeNavigation();
-
-  const first = SECTIONS[0];
-  const container = document.getElementById('right-page-content');
-
+  initTouch();
   try {
-    container.innerHTML = await loadSection(first.id);
-  } catch (error) {
-    console.error('Не удалось загрузить первый раздел:', error);
+    document.querySelector('#right-page-content').innerHTML = await getHtml('page1');
+    updateNavigation('page1');
+  } catch (e) {
+    console.error('Не удалось загрузить page1:', e);
   }
-
-  currentIndex = 0;
-  updateNavigation(first.id);
-  updateEyebrow(first);
 });
