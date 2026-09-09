@@ -8,7 +8,7 @@ const SECTIONS = [
 ];
 
 const sectionCache = {};
-let currentIndex = -1;
+let currentIndex = 0;
 let isFlipping = false;
 
 const prefersReducedMotion = window.matchMedia
@@ -19,75 +19,61 @@ async function loadSection(targetId) {
   if (typeof SECTION_HTML !== 'undefined' && SECTION_HTML[targetId] !== undefined) {
     return SECTION_HTML[targetId];
   }
-  // запасной вариант — на случай, если sections-data.js не подключён
-  if (sectionCache[targetId]) {
-    return sectionCache[targetId];
-  }
+  if (sectionCache[targetId]) return sectionCache[targetId];
+
   const res = await fetch(`sections/${targetId}.html`);
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
   const html = await res.text();
   sectionCache[targetId] = html;
   return html;
 }
 
-function waitForTransitionEnd(el, property, fallbackMs) {
-  return new Promise((resolve) => {
-    let done = false;
-    const finish = () => {
-      if (done) return;
-      done = true;
-      el.removeEventListener('transitionend', onEnd);
-      resolve();
-    };
-    const onEnd = (e) => {
-      if (e.target === el && (!property || e.propertyName === property)) {
-        finish();
-      }
-    };
-    el.addEventListener('transitionend', onEnd);
-    // подстраховка на случай, если событие transitionend не сработает
-    // (например, вкладка была неактивна или свойство не менялось)
-    setTimeout(finish, fallbackMs);
+function updateNavigation(targetId) {
+  document.querySelectorAll('.nav-item, .mobile-pill').forEach(el => {
+    const active = el.dataset.target === targetId;
+    el.classList.toggle('active', active);
+
+    if (active && el.classList.contains('mobile-pill')) {
+      el.scrollIntoView({
+        behavior: 'smooth',
+        block: 'nearest',
+        inline: 'center'
+      });
+    }
   });
 }
 
-async function switchPage(targetId) {
+function updateEyebrow(meta) {
+  const eyebrow = document.getElementById('paperEyebrow');
+  if (eyebrow) {
+    eyebrow.textContent =
+      `Раздел ${meta.num} из ${String(SECTIONS.length).padStart(2, '0')} — ${meta.label}`;
+  }
+}
+
+function nextFrame() {
+  return new Promise(resolve => requestAnimationFrame(resolve));
+}
+
+async function switchPage(targetId, directionOverride = null) {
   if (isFlipping) return;
 
   const targetIndex = SECTIONS.findIndex(s => s.id === targetId);
-  if (targetIndex === -1 || targetIndex === currentIndex) return;
+  if (targetIndex < 0 || targetIndex === currentIndex) return;
 
-  const goingForward = targetIndex > currentIndex;
+  const direction = directionOverride || (targetIndex > currentIndex ? 'up' : 'down');
+  const container = document.getElementById('right-page-content');
+  const meta = SECTIONS[targetIndex];
+
+  if (!container) return;
+
   isFlipping = true;
 
-  // безопасная сетка: что бы ни случилось с анимацией, флаг всегда снимется
-  const safetyRelease = setTimeout(() => { isFlipping = false; }, 2000);
-
   try {
-    const meta = SECTIONS[targetIndex];
-    const container = document.getElementById('right-page-content');
+    const html = await loadSection(targetId);
 
-    document.querySelectorAll('.nav-item, .mobile-pill').forEach(el => {
-      const isActive = el.getAttribute('data-target') === targetId;
-      el.classList.toggle('active', isActive);
-
-      if (isActive && el.classList.contains('mobile-pill')) {
-        el.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
-      }
-    });
-
-    const eyebrow = document.getElementById('paperEyebrow');
-    if (eyebrow && meta) {
-      eyebrow.textContent = `Раздел ${meta.num} из ${String(SECTIONS.length).padStart(2, '0')} — ${meta.label}`;
-    }
-
-    let html;
-    try {
-      html = await loadSection(targetId);
-    } catch (err) {
-      console.error('Не удалось загрузить раздел', targetId, err);
-      currentIndex = targetIndex;
-      return; // без секции анимировать нечего — просто выходим, контент не трогаем
-    }
+    updateNavigation(targetId);
+    updateEyebrow(meta);
 
     if (prefersReducedMotion) {
       container.innerHTML = html;
@@ -95,53 +81,168 @@ async function switchPage(targetId) {
       return;
     }
 
-    try {
-      // Фаза 1: текущий лист "уходит" вверх (вперёд) или вниз (назад)
-      container.classList.remove('flip-in-up-start', 'flip-in-down-start');
-      container.classList.add(goingForward ? 'flip-out-up' : 'flip-out-down');
+    // 1. Старый лист уходит вверх при переходе вперёд
+    //    и вниз при переходе назад.
+    container.classList.remove(
+      'flip-in-up-start',
+      'flip-in-down-start',
+      'flip-out-up',
+      'flip-out-down'
+    );
 
-      await waitForTransitionEnd(container, 'transform', 360);
-    } catch (err) {
-      console.error('Ошибка анимации (фаза ухода)', err);
-    }
+    // Принудительно применяем исходное состояние перед новой анимацией.
+    void container.offsetHeight;
 
-    // Контент подменяется в любом случае, даже если анимация выше сломалась
+    container.classList.add(
+      direction === 'up' ? 'flip-out-up' : 'flip-out-down'
+    );
+
+    await nextFrame();
+    await new Promise(resolve => {
+      const onEnd = event => {
+        if (event.target !== container || event.propertyName !== 'transform') return;
+        container.removeEventListener('transitionend', onEnd);
+        resolve();
+      };
+
+      container.addEventListener('transitionend', onEnd);
+      setTimeout(() => {
+        container.removeEventListener('transitionend', onEnd);
+        resolve();
+      }, 500);
+    });
+
+    // 2. Меняем содержимое, пока лист находится за пределами видимой области.
     container.innerHTML = html;
     currentIndex = targetIndex;
+
     container.classList.remove('flip-out-up', 'flip-out-down');
 
+    // Принудительный reflow — критично для Safari/iOS и некоторых Android-браузеров.
+    void container.offsetHeight;
+
+    // Новый лист приходит с противоположной стороны.
+    container.classList.add(
+      direction === 'up' ? 'flip-in-up-start' : 'flip-in-down-start'
+    );
+
+    void container.offsetHeight;
+
+    await nextFrame();
+
+    container.classList.remove(
+      'flip-in-up-start',
+      'flip-in-down-start'
+    );
+
+    await new Promise(resolve => {
+      const onEnd = event => {
+        if (event.target !== container || event.propertyName !== 'transform') return;
+        container.removeEventListener('transitionend', onEnd);
+        resolve();
+      };
+
+      container.addEventListener('transitionend', onEnd);
+      setTimeout(() => {
+        container.removeEventListener('transitionend', onEnd);
+        resolve();
+      }, 500);
+    });
+
+  } catch (error) {
+    console.error('Не удалось переключить раздел:', error);
+    // Если анимация/загрузка сломалась, всё равно показываем страницу.
     try {
-      // Фаза 2: ставим новый лист в стартовое положение без анимации...
-      container.classList.add(goingForward ? 'flip-in-up-start' : 'flip-in-down-start');
-
-      // ...затем на следующем кадре запускаем возврат в исходное положение
-      await new Promise((resolve) => {
-        requestAnimationFrame(() => {
-          requestAnimationFrame(() => {
-            container.classList.remove('flip-in-up-start', 'flip-in-down-start');
-            resolve();
-          });
-        });
-      });
-
-      await waitForTransitionEnd(container, 'transform', 400);
-    } catch (err) {
-      console.error('Ошибка анимации (фаза появления)', err);
-      container.classList.remove('flip-in-up-start', 'flip-in-down-start');
+      const html = await loadSection(targetId);
+      container.innerHTML = html;
+      currentIndex = targetIndex;
+      updateNavigation(targetId);
+      updateEyebrow(meta);
+    } catch (fallbackError) {
+      console.error('Не удалось показать раздел:', fallbackError);
     }
   } finally {
-    clearTimeout(safetyRelease);
+    container.classList.remove(
+      'flip-out-up',
+      'flip-out-down',
+      'flip-in-up-start',
+      'flip-in-down-start'
+    );
     isFlipping = false;
   }
 }
 
+function goRelative(step) {
+  const targetIndex = currentIndex + step;
+  if (targetIndex < 0 || targetIndex >= SECTIONS.length) return;
+
+  switchPage(SECTIONS[targetIndex].id, step > 0 ? 'up' : 'down');
+}
+
 function initNavigation() {
   document.querySelectorAll('.nav-item, .mobile-pill').forEach(btn => {
-    btn.addEventListener('click', () => switchPage(btn.getAttribute('data-target')));
+    btn.addEventListener('click', () => {
+      switchPage(btn.dataset.target);
+    });
   });
 }
 
-document.addEventListener('DOMContentLoaded', () => {
+function initSwipeNavigation() {
+  const area = document.querySelector('.content-area');
+  if (!area) return;
+
+  let startX = 0;
+  let startY = 0;
+  let startTime = 0;
+
+  area.addEventListener('touchstart', event => {
+    if (event.touches.length !== 1) return;
+
+    const touch = event.touches[0];
+    startX = touch.clientX;
+    startY = touch.clientY;
+    startTime = Date.now();
+  }, { passive: true });
+
+  area.addEventListener('touchend', event => {
+    if (isFlipping || !event.changedTouches.length) return;
+
+    const touch = event.changedTouches[0];
+    const dx = touch.clientX - startX;
+    const dy = touch.clientY - startY;
+    const duration = Date.now() - startTime;
+
+    // Только быстрый вертикальный свайп.
+    // Это не мешает обычной прокрутке длинных страниц.
+    const isVertical = Math.abs(dy) > Math.abs(dx) * 1.35;
+    const isSwipe = Math.abs(dy) >= 60 && duration <= 700;
+
+    if (!isVertical || !isSwipe) return;
+
+    if (dy < 0) {
+      // Свайп вверх -> следующий лист.
+      goRelative(1);
+    } else {
+      // Свайп вниз -> предыдущий лист.
+      goRelative(-1);
+    }
+  }, { passive: true });
+}
+
+document.addEventListener('DOMContentLoaded', async () => {
   initNavigation();
-  switchPage('page1');
+  initSwipeNavigation();
+
+  const first = SECTIONS[0];
+  const container = document.getElementById('right-page-content');
+
+  try {
+    container.innerHTML = await loadSection(first.id);
+  } catch (error) {
+    console.error('Не удалось загрузить первый раздел:', error);
+  }
+
+  currentIndex = 0;
+  updateNavigation(first.id);
+  updateEyebrow(first);
 });
