@@ -273,6 +273,8 @@ body {
   display: flex;
   justify-content: center;
   padding: 56px 48px 80px;
+  perspective: 1800px;
+  -webkit-perspective: 1800px;
 }
 
 .paper {
@@ -284,6 +286,9 @@ body {
   border: 1px solid var(--paper-edge);
   padding: 48px 56px;
   box-shadow: 0 30px 60px -24px rgba(0, 0, 0, 0.55);
+  transform-style: preserve-3d;
+  -webkit-transform-style: preserve-3d;
+  overflow: hidden;
 }
 
 .paper::before,
@@ -324,26 +329,52 @@ body {
 
 .paper-body {
   opacity: 1;
+  transform: rotateX(0deg);
+  transform-origin: 50% 0%;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+  will-change: transform, opacity;
+  transition: transform 0.34s cubic-bezier(0.45, 0, 0.2, 1), opacity 0.28s ease;
 }
 
-.paper-body.fade-in {
-  animation: fadeContent 0.32s ease;
+/* Переход "вперёд" (к следующему разделу) — лист уходит вверх */
+.paper-body.flip-out-up {
+  transform: rotateX(-92deg);
+  transform-origin: 50% 0%;
+  opacity: 0;
 }
 
-@keyframes fadeContent {
-  from {
-    opacity: 0;
-    transform: translateY(5px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
+/* Переход "назад" (к предыдущему разделу) — лист уходит вниз */
+.paper-body.flip-out-down {
+  transform: rotateX(92deg);
+  transform-origin: 50% 100%;
+  opacity: 0;
+}
+
+/* Стартовое положение нового листа перед появлением (без transition — устанавливается мгновенно) */
+.paper-body.flip-in-up-start {
+  transition: none;
+  transform: rotateX(92deg);
+  transform-origin: 50% 100%;
+  opacity: 0;
+}
+
+.paper-body.flip-in-down-start {
+  transition: none;
+  transform: rotateX(-92deg);
+  transform-origin: 50% 0%;
+  opacity: 0;
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .paper-body.fade-in {
-    animation: none;
+  .paper-body {
+    transition: opacity 0.2s ease;
+  }
+  .paper-body.flip-out-up,
+  .paper-body.flip-out-down,
+  .paper-body.flip-in-up-start,
+  .paper-body.flip-in-down-start {
+    transform: none;
   }
   .mobile-pill,
   .nav-item {

@@ -8,6 +8,12 @@ const SECTIONS = [
 ];
 
 const sectionCache = {};
+let currentIndex = -1;
+let isFlipping = false;
+
+const prefersReducedMotion = window.matchMedia
+  ? window.matchMedia('(prefers-reduced-motion: reduce)').matches
+  : false;
 
 async function loadSection(targetId) {
   if (sectionCache[targetId]) {
@@ -19,8 +25,36 @@ async function loadSection(targetId) {
   return html;
 }
 
+function waitForTransitionEnd(el, property, fallbackMs) {
+  return new Promise((resolve) => {
+    let done = false;
+    const finish = () => {
+      if (done) return;
+      done = true;
+      el.removeEventListener('transitionend', onEnd);
+      resolve();
+    };
+    const onEnd = (e) => {
+      if (e.target === el && (!property || e.propertyName === property)) {
+        finish();
+      }
+    };
+    el.addEventListener('transitionend', onEnd)
+    setTimeout(finish, fallbackMs);
+  });
+}
+
 async function switchPage(targetId) {
-  const meta = SECTIONS.find(s => s.id === targetId);
+  if (isFlipping) return;
+
+  const targetIndex = SECTIONS.findIndex(s => s.id === targetId);
+  if (targetIndex === -1 || targetIndex === currentIndex) return;
+
+  const goingForward = targetIndex > currentIndex;
+  isFlipping = true;
+
+  const meta = SECTIONS[targetIndex];
+  const container = document.getElementById('right-page-content');
 
   document.querySelectorAll('.nav-item, .mobile-pill').forEach(el => {
     const isActive = el.getAttribute('data-target') === targetId;
@@ -36,14 +70,34 @@ async function switchPage(targetId) {
     eyebrow.textContent = `Раздел ${meta.num} из ${String(SECTIONS.length).padStart(2, '0')} — ${meta.label}`;
   }
 
-  const container = document.getElementById('right-page-content');
   const html = await loadSection(targetId);
-  container.innerHTML = html;
 
-  // перезапуск анимации появления
-  container.classList.remove('fade-in');
-  void container.offsetWidth;
-  container.classList.add('fade-in');
+  if (prefersReducedMotion) {
+    container.innerHTML = html;
+    currentIndex = targetIndex;
+    isFlipping = false;
+    return;
+  }
+
+  container.classList.remove('flip-in-up-start', 'flip-in-down-start');
+  container.classList.add(goingForward ? 'flip-out-up' : 'flip-out-down');
+
+  await waitForTransitionEnd(container, 'transform', 360);
+
+  container.innerHTML = html;
+  currentIndex = targetIndex;
+
+  container.classList.remove('flip-out-up', 'flip-out-down');
+  container.classList.add(goingForward ? 'flip-in-up-start' : 'flip-in-down-start');
+
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      container.classList.remove('flip-in-up-start', 'flip-in-down-start');
+    });
+  });
+
+  await waitForTransitionEnd(container, 'transform', 400);
+  isFlipping = false;
 }
 
 function initNavigation() {
