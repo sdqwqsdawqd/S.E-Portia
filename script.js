@@ -2,13 +2,107 @@ const SECTIONS = [
   { id: 'page1', num: '01', label: 'О отделе' },
   { id: 'page2', num: '02', label: 'Правила' },
   { id: 'page3', num: '03', label: 'Норма отдела' },
-  { id: 'page4', num: '04', label: 'Повышения' },
+  { id: 'page4', num: '04', label: 'Повышения и иерархия' },
   { id: 'page5', num: '05', label: 'Информация' },
   { id: 'page6', num: '06', label: 'Логи' },
 ];
 
 const sectionCache = {};
 let currentIndex = -1;
+let idleWebTimer = null;
+
+const SVG_NS = 'http://www.w3.org/2000/svg';
+const IDLE_WEB_DELAY = 16000;
+
+function makeSvgElement(name, attributes = {}) {
+  const element = document.createElementNS(SVG_NS, name);
+  Object.entries(attributes).forEach(([key, value]) => element.setAttribute(key, value));
+  return element;
+}
+
+function addButtonWebs() {
+  document.querySelectorAll('.nav-item, .mobile-pill').forEach((button) => {
+    const web = makeSvgElement('svg', {
+      class: 'button-web', viewBox: '0 0 220 58', preserveAspectRatio: 'none', 'aria-hidden': 'true',
+    });
+    // Угловые фрагменты сети оставляют подпись кнопки читаемой.
+    [
+      'M4 55 C12 37 18 20 29 4 M4 55 C21 47 38 40 57 37 M4 55 C24 55 43 54 64 50',
+      'M12 39 C26 34 39 33 51 35 M8 48 C26 45 42 45 60 48',
+      'M216 3 C208 21 202 38 191 54 M216 3 C199 11 182 18 163 21 M216 3 C196 3 177 4 156 8',
+      'M208 19 C194 24 181 25 169 23 M212 10 C194 13 178 13 160 10',
+    ].forEach((d) => web.appendChild(makeSvgElement('path', { d })));
+    [[4, 55], [29, 4], [216, 3], [191, 54]].forEach(([cx, cy]) => {
+      web.appendChild(makeSvgElement('circle', { cx, cy, r: 1.45 }));
+    });
+    button.appendChild(web);
+  });
+}
+
+function addNavigationWeb(container, itemSelector) {
+  const web = makeSvgElement('svg', { class: 'nav-web', 'aria-hidden': 'true' });
+  container.prepend(web);
+
+  const redraw = () => {
+    const items = Array.from(container.querySelectorAll(itemSelector));
+    const horizontal = container.classList.contains('mobile-tabs');
+    const span = horizontal ? Math.max(container.scrollWidth, container.clientWidth) : container.clientWidth;
+    const length = horizontal ? container.clientHeight : container.scrollHeight;
+    web.setAttribute('width', span);
+    web.setAttribute('height', length);
+    web.setAttribute('viewBox', `0 0 ${span} ${length}`);
+    web.replaceChildren();
+
+    for (let index = 0; index < items.length - 1; index += 1) {
+      const from = items[index];
+      const to = items[index + 1];
+      const start = horizontal
+        ? { x: from.offsetLeft + from.offsetWidth * 0.72, y: from.offsetTop + from.offsetHeight * 0.38 }
+        : { x: from.offsetLeft + 22, y: from.offsetTop + from.offsetHeight * 0.68 };
+      const end = horizontal
+        ? { x: to.offsetLeft + to.offsetWidth * 0.28, y: to.offsetTop + to.offsetHeight * 0.62 }
+        : { x: to.offsetLeft + 22, y: to.offsetTop + to.offsetHeight * 0.32 };
+      const middle = horizontal
+        ? { x: (start.x + end.x) / 2, y: start.y + (index % 2 ? -13 : 13) }
+        : { x: start.x + (index % 2 ? -14 : 14), y: (start.y + end.y) / 2 };
+      const path = horizontal
+        ? `M ${start.x} ${start.y} Q ${middle.x} ${middle.y} ${end.x} ${end.y}`
+        : `M ${start.x} ${start.y} Q ${middle.x} ${middle.y} ${end.x} ${end.y}`;
+      web.appendChild(makeSvgElement('path', { d: path }));
+      web.appendChild(makeSvgElement('path', {
+        d: horizontal
+          ? `M ${start.x} ${start.y} L ${middle.x} ${middle.y} L ${end.x} ${end.y}`
+          : `M ${start.x - 9} ${start.y} L ${middle.x} ${middle.y} L ${end.x + 9} ${end.y}`,
+      }));
+      web.appendChild(makeSvgElement('circle', {
+        class: 'web-knot', cx: middle.x, cy: middle.y, r: 1.35,
+      }));
+    }
+  };
+
+  redraw();
+  window.addEventListener('resize', redraw);
+}
+
+function scheduleIdleWeb(targetId) {
+  window.clearTimeout(idleWebTimer);
+  document.querySelectorAll('.nav-item, .mobile-pill').forEach((button) => {
+    if (button.classList.contains('web-covered')) {
+      button.classList.remove('web-covered');
+      button.classList.add('web-dissolving');
+      window.setTimeout(() => button.classList.remove('web-dissolving'), 760);
+    }
+  });
+
+  idleWebTimer = window.setTimeout(() => {
+    document.querySelectorAll('.nav-item, .mobile-pill').forEach((button) => {
+      if (button.dataset.target === targetId) {
+        button.classList.remove('web-dissolving');
+        button.classList.add('web-covered');
+      }
+    });
+  }, IDLE_WEB_DELAY);
+}
 
 async function loadSection(targetId) {
   if (typeof SECTION_HTML !== 'undefined' && SECTION_HTML[targetId] !== undefined) {
@@ -228,8 +322,14 @@ const spiderWalkers = [];
 function initSpiderWalkers() {
   const desktopNavigation = document.querySelector('.nav-list');
   const mobileNavigation = document.querySelector('.mobile-tabs');
-  if (desktopNavigation) spiderWalkers.push(new SpiderWalker(desktopNavigation, '.nav-item'));
-  if (mobileNavigation) spiderWalkers.push(new SpiderWalker(mobileNavigation, '.mobile-pill'));
+  if (desktopNavigation) {
+    addNavigationWeb(desktopNavigation, '.nav-item');
+    spiderWalkers.push(new SpiderWalker(desktopNavigation, '.nav-item'));
+  }
+  if (mobileNavigation) {
+    addNavigationWeb(mobileNavigation, '.mobile-pill');
+    spiderWalkers.push(new SpiderWalker(mobileNavigation, '.mobile-pill'));
+  }
 }
 
 async function switchPage(targetId) {
@@ -247,6 +347,7 @@ async function switchPage(targetId) {
   });
 
   spiderWalkers.forEach((walker) => walker.walkTo(targetId));
+  scheduleIdleWeb(targetId);
   document.getElementById('paperSectionNumber').textContent = meta.num;
   document.getElementById('paperEyebrow').textContent = `Раздел ${meta.num} из ${String(SECTIONS.length).padStart(2, '0')} — ${meta.label}`;
 
@@ -267,6 +368,7 @@ function initNavigation() {
 
 document.addEventListener('DOMContentLoaded', () => {
   initNavigation();
+  addButtonWebs();
   initSpiderWalkers();
   switchPage('page1');
 });

@@ -41,12 +41,26 @@ html, body {
 body {
   background-color: var(--bg-deep);
   background-image:
-    linear-gradient(rgba(255,255,255,0.018) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(255,255,255,0.014) 1px, transparent 1px);
+    linear-gradient(rgba(117, 186, 173, 0.018) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(117, 186, 173, 0.014) 1px, transparent 1px);
   background-size: 32px 32px;
   font-family: var(--font-sans);
   color: var(--ink);
   min-height: 100vh;
+}
+
+/* Один большой, слегка неровный фрагмент паутины вместо повторяющегося паттерна. */
+body::before {
+  content: '';
+  position: fixed;
+  z-index: 0;
+  top: -105px;
+  right: -245px;
+  width: 1040px;
+  height: 760px;
+  background: url('assets/web-background.svg') center / contain no-repeat;
+  opacity: 0.34;
+  pointer-events: none;
 }
 
 /* ============ ОБЩАЯ СЕТКА ============ */
@@ -54,6 +68,8 @@ body {
 .app-shell {
   display: flex;
   min-height: 100vh;
+  position: relative;
+  z-index: 1;
 }
 
 /* ============ БОКОВАЯ ПАНЕЛЬ (ПК) ============ */
@@ -122,6 +138,28 @@ body {
   gap: 3px;
 }
 
+/* Тонкая связующая паутина находится ниже кнопок и следов паука. */
+.nav-web {
+  position: absolute;
+  inset: 0 auto auto 0;
+  overflow: visible;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.nav-web path,
+.nav-web circle {
+  fill: none;
+  stroke: rgba(84, 180, 163, 0.38);
+  stroke-width: 0.75;
+  vector-effect: non-scaling-stroke;
+}
+
+.nav-web .web-knot {
+  fill: rgba(101, 205, 186, 0.42);
+  stroke: none;
+}
+
 .nav-item {
   position: relative;
   display: flex;
@@ -139,6 +177,12 @@ body {
   font-weight: 500;
   color: var(--muted-light);
   transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+
+.nav-item > span:not(.button-web),
+.mobile-pill > span:not(.button-web) {
+  position: relative;
+  z-index: 2;
 }
 
 .nav-num {
@@ -162,6 +206,52 @@ body {
 
 .nav-item.active .nav-num {
   color: #eef4f2;
+}
+
+/* Паутина появляется только после долгого пребывания на разделе. */
+.button-web {
+  position: absolute;
+  inset: -7px -9px;
+  overflow: visible;
+  pointer-events: none;
+  opacity: 0;
+  transform: scale(0.82);
+  transform-origin: center;
+  z-index: 1;
+}
+
+.button-web path,
+.button-web circle {
+  fill: none;
+  stroke: rgba(126, 225, 207, 0.72);
+  stroke-width: 0.8;
+  vector-effect: non-scaling-stroke;
+}
+
+.button-web circle {
+  fill: rgba(159, 239, 222, 0.52);
+  stroke: none;
+}
+
+.nav-item.web-covered .button-web,
+.mobile-pill.web-covered .button-web {
+  animation: web-weave-in 1.8s cubic-bezier(.16, .78, .26, 1) forwards;
+}
+
+.nav-item.web-dissolving .button-web,
+.mobile-pill.web-dissolving .button-web {
+  animation: web-dissolve .72s cubic-bezier(.54, 0, .85, .31) forwards;
+}
+
+@keyframes web-weave-in {
+  0% { opacity: 0; transform: scale(0.74) rotate(-2deg); }
+  42% { opacity: 0.42; }
+  100% { opacity: 0.55; transform: scale(1) rotate(0); }
+}
+
+@keyframes web-dissolve {
+  0% { opacity: 0.55; transform: scale(1); filter: blur(0); }
+  100% { opacity: 0; transform: scale(1.18) translate(7px, -5px); filter: blur(1.5px); }
 }
 
 
@@ -294,6 +384,10 @@ body {
   max-width: 740px;
   height: fit-content;
   background-color: var(--paper);
+  background-image: url('assets/paper-web.svg');
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: 100% 100%;
   border: 1px solid var(--paper-edge);
   padding: 48px 56px;
   box-shadow:
@@ -326,6 +420,8 @@ body {
 }
 
 .paper-meta {
+  position: relative;
+  z-index: 1;
   margin-bottom: 28px;
   display: flex;
   align-items: baseline;
@@ -369,6 +465,8 @@ body {
 /* ============ КОНТЕНТ РАЗДЕЛОВ (используется в sections/pageN.html) ============ */
 
 .content-block {
+  position: relative;
+  z-index: 1;
   margin-bottom: 34px;
 }
 
@@ -633,4 +731,12 @@ body {
   .paper {
     padding: 24px 16px;
   }
+}
+
+.responsive-image {
+    width: 100%;
+    max-width: 550px;
+    height: auto;
+    border: 1px solid black;
+    box-sizing: border-box;
 }
