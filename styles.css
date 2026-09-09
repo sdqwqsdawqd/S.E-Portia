@@ -16,7 +16,8 @@
   --teal-soft: rgba(18, 137, 122, 0.14);
   --danger: #b93a2f;
   --danger-soft: rgba(185, 58, 47, 0.13);
-  --highlilrs --hightlight-green: #3fbd68;
+  --highlight-green-soft: rgba(73, 224, 123, 0.13);;
+  --hightlight-green: #3fbd68;
   --hightlight-orange-soft: rgba(231, 156, 63, 0.13);
   --hightlight-orange: #e89a3d;
   --font-mono: 'IBM Plex Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace;
@@ -493,6 +494,11 @@ body::before {
   font-size: 15.5px;
   line-height: 1.75;
   color: var(--ink-soft);
+  text-align: left;
+}
+
+.paper-body {
+  text-align: left;
 }
 
 .block-text br {
@@ -501,20 +507,22 @@ body::before {
 
 .content-list {
   margin: 14px 0;
-  padding-left: 22px;
+  padding-left: 0;
   list-style: none;
+  text-align: left;
 }
 
 .content-list li {
   position: relative;
-  padding-left: 4px;
+  padding-left: 24px;
   line-height: 1.75;
+  text-align: left;
 }
 
 .content-list li::before {
   content: '—';
   position: absolute;
-  left: -20px;
+  left: 0;
   color: var(--teal);
 }
 
@@ -528,6 +536,63 @@ body::before {
   line-height: 1.75;
   color: var(--muted);
   font-size: 14.5px;
+}
+
+.qualification-list p {
+  margin: 22px 0 8px;
+}
+
+.qualification-list p:first-child {
+  margin-top: 0;
+}
+
+.leadership-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  margin-top: 18px;
+}
+
+.leadership-card {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px;
+  border: 1px solid rgba(18, 137, 122, 0.25);
+  background: rgba(255, 255, 255, 0.28);
+}
+
+.leader-photo {
+  display: grid;
+  place-items: center;
+  width: 72px;
+  aspect-ratio: 1;
+  flex: 0 0 72px;
+  border: 1px dashed rgba(10, 90, 79, 0.52);
+  color: var(--teal-deep);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+}
+
+.leader-details {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  color: var(--ink-soft);
+  font-size: 13.5px;
+  line-height: 1.4;
+}
+
+.leader-details strong {
+  color: var(--ink);
+}
+
+.leader-details span {
+  color: var(--muted);
 }
 
 .doc-link {
@@ -724,6 +789,10 @@ body::before {
   .block-text {
     font-size: 15px;
   }
+
+  .leadership-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 @media (max-width: 420px) {
@@ -732,12 +801,3 @@ body::before {
   }
 }
 
-.responsive-image {
-    width: 100%;
-    max-width: 550px;
-    height: auto;
-    border: 1px solid black;
-    box-sizing: border-box;
-}
-
-#лолол

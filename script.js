@@ -3,9 +3,18 @@ const SECTIONS = [
   { id: 'page2', num: '02', label: 'Правила' },
   { id: 'page3', num: '03', label: 'Норма отдела' },
   { id: 'page4', num: '04', label: 'Повышения и иерархия' },
-  { id: 'page5', num: '05', label: 'Информация' },
-  { id: 'page6', num: '06', label: 'Логи' },
+  { id: 'page5', num: '05', label: 'Квалиф. проверки' },
+  { id: 'page6', num: '06', label: 'Информация' },
+  { id: 'page7', num: '07', label: 'Логи' },
+  { id: 'page8', num: '08', label: 'История руководства' },
 ];
+
+// Идентификатор листа всегда равен его номеру; ниже указан файл с его содержимым.
+const SECTION_FILES = {
+  page5: 'page7',
+  page6: 'page5',
+  page7: 'page6',
+};
 
 const sectionCache = {};
 let currentIndex = -1;
@@ -111,7 +120,8 @@ async function loadSection(targetId) {
 
   if (sectionCache[targetId]) return sectionCache[targetId];
 
-  const response = await fetch(`sections/${targetId}.html`);
+  const fileId = SECTION_FILES[targetId] || targetId;
+  const response = await fetch(`sections/${fileId}.html`);
   if (!response.ok) throw new Error(`Не удалось загрузить ${targetId}`);
 
   const html = await response.text();
