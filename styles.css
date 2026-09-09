@@ -115,6 +115,7 @@ body {
 }
 
 .nav-list {
+  position: relative;
   margin-top: 36px;
   display: flex;
   flex-direction: column;
@@ -122,6 +123,7 @@ body {
 }
 
 .nav-item {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 12px;
@@ -225,6 +227,7 @@ body {
 }
 
 .mobile-tabs {
+  position: relative;
   display: flex;
   flex-wrap: nowrap;
   gap: 8px;
@@ -239,6 +242,7 @@ body {
 }
 
 .mobile-pill {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 6px;
@@ -529,6 +533,43 @@ body {
   font-weight: 600;
   padding: 2px 8px;
   border-radius: 3px;
+}
+
+/* ============ СЛЕДЫ ЛАПОК ПАУКА ============ */
+/*
+  Самого паука не рисуем — только капельки-следы. Их позицию считает
+  script.js (обычные px-координаты через transform), поэтому эффект не
+  зависит от поддержки offset-path в браузере и работает везде одинаково.
+  - .paw-dot.idle-dot  — бегают по контуру активной кнопки по кругу.
+  - .paw-dot.trail-dot — короткий росчерк, оставленный при переходе
+                          паука от одной кнопки к другой.
+*/
+
+.paw-dot {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 5px;
+  height: 6px;
+  background: var(--teal);
+  border-radius: 55% 55% 55% 8%;
+  pointer-events: none;
+  will-change: transform, opacity;
+}
+
+.paw-dot.idle-dot {
+  opacity: 0;
+}
+
+.paw-dot.trail-dot {
+  opacity: 0;
+  transition: opacity 0.55s ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .paw-dot {
+    display: none;
+  }
 }
 
 /* ============ МОБИЛЬНАЯ АДАПТАЦИЯ ============ */
