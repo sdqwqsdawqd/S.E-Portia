@@ -704,8 +704,6 @@ body::before {
   font-weight: 600;
   padding: 2px 8px;
   border-radius: 3px;
-  margin: 0;
-  padding: 0;
 }
 
 .rank-ldrs {
@@ -714,8 +712,6 @@ body::before {
   font-weight: 600;
   padding: 2px 8px;
   border-radius: 3px;
-  margin: 0;
-  padding: 0;
 }
 
 /* ============ ПАУК И ЕГО СЛЕДЫ В НАВИГАЦИИ ============ */
