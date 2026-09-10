@@ -695,7 +695,7 @@ body::before {
 }
 
 .rank-prfs {
-  background-color: #ca9ee0;
+  background-color: #cf7373;
   color: var(--ink);
   font-weight: 600;
   padding: 2px 8px;
@@ -703,7 +703,7 @@ body::before {
 }
 
 .rank-ldrs {
-  background-color: #5a3286;
+  background-color: #ca9ee0;
   color: var(--ink);
   font-weight: 600;
   padding: 2px 8px;
