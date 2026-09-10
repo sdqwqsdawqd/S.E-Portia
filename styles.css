@@ -556,16 +556,18 @@ body::before {
 .leadership-card {
   min-width: 0;
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 12px;
   padding: 10px;
   border: 1px solid rgba(18, 137, 122, 0.25);
   background: rgba(255, 255, 255, 0.28);
+  height: 160px;
 }
 
 .leader-photo {
   display: grid;
   place-items: center;
+  align-self: flex-start;
   width: 72px;
   aspect-ratio: 1;
   flex: 0 0 72px;
@@ -589,13 +591,15 @@ body::before {
 }
 
 .leader-details {
-  min-width: 0;
+    min-width: 0;
   display: flex;
   flex-direction: column;
   gap: 5px;
   color: var(--ink-soft);
   font-size: 13.5px;
   line-height: 1.4;
+  height: 100%;
+  overflow-y: auto;
 }
 
 .leader-details strong {
@@ -700,6 +704,8 @@ body::before {
   font-weight: 600;
   padding: 2px 8px;
   border-radius: 3px;
+  margin: 0;
+  padding: 0;
 }
 
 .rank-ldrs {
@@ -708,6 +714,8 @@ body::before {
   font-weight: 600;
   padding: 2px 8px;
   border-radius: 3px;
+  margin: 0;
+  padding: 0;
 }
 
 /* ============ ПАУК И ЕГО СЛЕДЫ В НАВИГАЦИИ ============ */
