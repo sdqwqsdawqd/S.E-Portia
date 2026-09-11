@@ -851,4 +851,10 @@ body::before {
 .game-controls button { min-height: 48px; border: 1px solid var(--teal-deep); color: var(--teal-deep); background: var(--teal-soft); font: 700 16px var(--font-mono); touch-action: none; }
 .game-controls button:active { background: var(--teal-deep); color: #f6f3ea; }
 .game-hint { margin: 13px 0 0; color: var(--muted); font: 11px/1.6 var(--font-mono); }
+.game-ranking { margin-top: 22px; border-top: 1px dashed rgba(18, 137, 122, .42); padding-top: 15px; }
+.game-ranking h3 { margin: 0 0 10px; color: var(--teal-deep); font: 700 12px var(--font-mono); letter-spacing: .08em; }
+.game-ranking ol { margin: 0; padding: 0; list-style: none; font: 12px/1.5 var(--font-mono); }
+.game-ranking li { display: flex; justify-content: space-between; gap: 12px; padding: 5px 7px; border-bottom: 1px solid rgba(18, 137, 122, .12); }
+.game-ranking li:first-child { color: var(--teal-deep); }
+.game-ranking b { color: var(--teal-deep); }
 @media (max-width: 860px) { .game-stage { height: 52vh; min-height: 310px; } .game-controls { display: grid; } .game-hint { text-align: center; } }
