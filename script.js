@@ -375,12 +375,11 @@ async function switchPage(targetId) {
 }
 
 class SecretShooter {
-  constructor(canvas, scoreElement, bestElement, livesElement, statusElement, playerName) {
+  constructor(canvas, scoreElement, bestElement, statusElement, playerName) {
     this.canvas = canvas;
     this.context = canvas.getContext('2d');
     this.scoreElement = scoreElement;
     this.bestElement = bestElement;
-    this.livesElement = livesElement;
     this.statusElement = statusElement;
     this.playerName = playerName;
     this.keys = new Set();
@@ -388,7 +387,6 @@ class SecretShooter {
     this.enemies = [];
     this.stars = Array.from({ length: 46 }, () => ({ x: Math.random(), y: Math.random(), speed: 0.18 + Math.random() * 0.48 }));
     this.score = 0;
-    this.lives = 3;
     this.best = Number.parseInt(localStorage.getItem('portia-secret-shooter-best') || '0', 10) || 0;
     this.startedAt = performance.now();
     this.lastShot = 0;
@@ -412,7 +410,6 @@ class SecretShooter {
     this.resize();
     window.addEventListener('resize', () => this.resize());
     this.bestElement.textContent = this.best;
-    this.livesElement.textContent = '● ● ●';
     requestAnimationFrame(this.frame);
   }
 
@@ -443,12 +440,11 @@ class SecretShooter {
     const delta = Math.min(now - this.lastFrame, 40);
     this.lastFrame = now;
     const difficulty = 1 + (now - this.startedAt) / 25000;
-    const move = 0.0055 * difficulty;
+    const move = 0.0105 * difficulty;
     if (this.keys.has('ArrowLeft') || this.keys.has('a') || this.keys.has('A')) this.player.x -= move;
     if (this.keys.has('ArrowRight') || this.keys.has('d') || this.keys.has('D')) this.player.x += move;
     this.player.x = Math.max(0.07, Math.min(0.93, this.player.x));
-    const manualFire = this.keys.has(' ') || this.keys.has('fire');
-    if (now - this.lastShot > (manualFire ? 180 : 470)) {
+    if ((this.keys.has(' ') || this.keys.has('fire')) && now - this.lastShot > 180) {
       this.bullets.push({ x: this.player.x, y: this.player.y - 0.07 });
       this.lastShot = now;
     }
@@ -476,9 +472,7 @@ class SecretShooter {
       }
       if (enemy.y > 1.08 || (Math.abs(enemy.x - this.player.x) < enemy.size * 0.62 && Math.abs(enemy.y - this.player.y) < enemy.size * 0.68)) {
         this.enemies.splice(index, 1);
-        this.lives -= 1;
-        this.livesElement.textContent = `${'● '.repeat(this.lives)}${'○ '.repeat(3 - this.lives)}`.trim();
-        if (this.lives <= 0) this.end();
+        this.end();
       }
     }
     this.draw(difficulty);
@@ -507,7 +501,7 @@ class SecretShooter {
       const size = enemy.size * this.width;
       if (this.enemyImage.complete) ctx.drawImage(this.enemyImage, enemy.x * this.width - size / 2, enemy.y * this.height - size / 2, size, size);
     });
-    const gunWidth = this.width * 0.17;
+    const gunWidth = this.width * 0.11;
     const gunHeight = gunWidth * 1.9;
     if (this.weapon.complete) ctx.drawImage(this.weapon, this.player.x * this.width - gunWidth / 2, this.player.y * this.height - gunHeight / 2, gunWidth, gunHeight);
   }
@@ -563,16 +557,16 @@ function openSecretGame() {
   secretGameReturnPage = SECTIONS[currentIndex]?.id || 'page7';
   const content = document.getElementById('right-page-content');
   document.getElementById('paperSectionNumber').textContent = '??';
-  document.getElementById('paperEyebrow').textContent = 'Секретный режим — PORTIA DEFENSE';
+  document.getElementById('paperEyebrow').textContent = 'Мини игра — PORTIA DEFENSE';
   content.innerHTML = `<section class="secret-game" aria-label="Секретная игра">
     <div class="game-heading"><div><span class="game-kicker">CLASSIFIED // MINI-GAME</span><h2>PORTIA DEFENSE</h2></div><button type="button" class="game-exit" data-close-secret-game>Выйти ×</button></div>
-    <div class="game-scoreboard"><span>ИГРОК <b>${secretPlayerName}</b></span><span>ОЧКИ <b data-game-score>0</b></span><span>ЩИТ <b data-game-lives>● ● ●</b></span><span>РЕКОРД <b data-game-best>0</b></span></div>
-    <div class="game-stage"><canvas data-game-canvas aria-label="Игровое поле"></canvas><div class="game-over" data-game-over hidden><p>СИГНАЛ ПОТЕРЯН</p><span>Очки: <b data-final-score>0</b></span><button type="button" data-restart-secret-game>Ещё попытка</button></div></div>
+    <div class="game-scoreboard"><span>ИГРОК <b>${secretPlayerName}</b></span><span>ОЧКИ <b data-game-score>0</b></span><span>РЕКОРД <b data-game-best>0</b></span></div>
+    <div class="game-stage"><canvas data-game-canvas aria-label="Игровое поле"></canvas><div class="game-over" data-game-over hidden><p>U.R.U ПОБЕДИЛИ</p><span>Очки: <b data-final-score>0</b></span><button type="button" data-restart-secret-game>Ещё попытка</button></div></div>
     <div class="game-controls"><button type="button" data-game-control="ArrowLeft" aria-label="Влево">←</button><button type="button" data-game-control="fire" aria-label="Огонь">ОГОНЬ</button><button type="button" data-game-control="ArrowRight" aria-label="Вправо">→</button></div>
-    <p class="game-hint">A / D или ← / → — движение · ПРОБЕЛ — огонь · чем дольше держитесь, тем плотнее атака.</p>
+    <p class="game-hint"> ← / → — движение · ПРОБЕЛ — огонь · Держитесь хлопчики! Уру наступает!!!</p>
     <section class="game-ranking" aria-label="Общий рейтинг"><h3>ОБЩИЙ РЕЙТИНГ // TOP 10</h3><ol data-ranking-list><li>Загрузка рейтинга…</li></ol></section>
   </section>`;
-  secretGame = new SecretShooter(content.querySelector('[data-game-canvas]'), content.querySelector('[data-game-score]'), content.querySelector('[data-game-best]'), content.querySelector('[data-game-lives]'), content.querySelector('[data-game-over]'), secretPlayerName);
+  secretGame = new SecretShooter(content.querySelector('[data-game-canvas]'), content.querySelector('[data-game-score]'), content.querySelector('[data-game-best]'), content.querySelector('[data-game-over]'), secretPlayerName);
   renderLeaderboard(content.querySelector('.secret-game'));
 }
 
