@@ -19,6 +19,8 @@ const SECTION_FILES = {
 const sectionCache = {};
 let currentIndex = -1;
 let idleWebTimer = null;
+let secretGame = null;
+let secretGameReturnPage = 'page7';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
 const IDLE_WEB_DELAY = 16000;
@@ -343,6 +345,7 @@ function initSpiderWalkers() {
 }
 
 async function switchPage(targetId) {
+  if (secretGame) closeSecretGame();
   const targetIndex = SECTIONS.findIndex((section) => section.id === targetId);
   if (targetIndex === -1 || targetIndex === currentIndex) return;
 
@@ -370,9 +373,186 @@ async function switchPage(targetId) {
   }
 }
 
+class SecretShooter {
+  constructor(canvas, scoreElement, bestElement, statusElement) {
+    this.canvas = canvas;
+    this.context = canvas.getContext('2d');
+    this.scoreElement = scoreElement;
+    this.bestElement = bestElement;
+    this.statusElement = statusElement;
+    this.keys = new Set();
+    this.bullets = [];
+    this.enemies = [];
+    this.stars = Array.from({ length: 46 }, () => ({ x: Math.random(), y: Math.random(), speed: 0.18 + Math.random() * 0.48 }));
+    this.score = 0;
+    this.best = Number.parseInt(localStorage.getItem('portia-secret-shooter-best') || '0', 10) || 0;
+    this.startedAt = performance.now();
+    this.lastShot = 0;
+    this.lastSpawn = 0;
+    this.running = true;
+    this.player = { x: 0.5, y: 0.84, width: 0.1 };
+    this.weapon = new Image();
+    this.enemyImage = new Image();
+    this.weapon.src = 'assets/pistol-minigame.png';
+    this.enemyImage.src = 'assets/uru-minigame.png';
+    this.frame = this.frame.bind(this);
+    this.onKeyDown = (event) => {
+      if (['ArrowLeft', 'ArrowRight', 'a', 'A', 'd', 'D', ' '].includes(event.key)) event.preventDefault();
+      this.keys.add(event.key);
+    };
+    this.onKeyUp = (event) => this.keys.delete(event.key);
+    window.addEventListener('keydown', this.onKeyDown);
+    window.addEventListener('keyup', this.onKeyUp);
+    this.attachControls();
+    this.resize();
+    window.addEventListener('resize', () => this.resize());
+    this.bestElement.textContent = this.best;
+    requestAnimationFrame(this.frame);
+  }
+
+  attachControls() {
+    document.querySelectorAll('[data-game-control]').forEach((control) => {
+      const key = control.dataset.gameControl;
+      const press = (event) => { event.preventDefault(); this.keys.add(key); };
+      const release = (event) => { event.preventDefault(); this.keys.delete(key); };
+      control.addEventListener('pointerdown', press);
+      control.addEventListener('pointerup', release);
+      control.addEventListener('pointerleave', release);
+      control.addEventListener('pointercancel', release);
+    });
+  }
+
+  resize() {
+    const bounds = this.canvas.getBoundingClientRect();
+    const ratio = Math.min(window.devicePixelRatio || 1, 2);
+    this.canvas.width = Math.max(1, Math.floor(bounds.width * ratio));
+    this.canvas.height = Math.max(1, Math.floor(bounds.height * ratio));
+    this.context.setTransform(ratio, 0, 0, ratio, 0, 0);
+    this.width = bounds.width;
+    this.height = bounds.height;
+  }
+
+  frame(now) {
+    if (!this.running) return;
+    const difficulty = 1 + (now - this.startedAt) / 25000;
+    const move = 0.0055 * difficulty;
+    if (this.keys.has('ArrowLeft') || this.keys.has('a') || this.keys.has('A')) this.player.x -= move;
+    if (this.keys.has('ArrowRight') || this.keys.has('d') || this.keys.has('D')) this.player.x += move;
+    this.player.x = Math.max(0.07, Math.min(0.93, this.player.x));
+    if ((this.keys.has(' ') || this.keys.has('fire')) && now - this.lastShot > 230) {
+      this.bullets.push({ x: this.player.x, y: this.player.y - 0.07 });
+      this.lastShot = now;
+    }
+    const spawnInterval = Math.max(260, 1150 - difficulty * 110);
+    if (now - this.lastSpawn > spawnInterval) {
+      this.enemies.push({ x: 0.1 + Math.random() * 0.8, y: -0.1, speed: 0.00016 + difficulty * 0.000055, size: 0.085 + Math.random() * 0.035 });
+      this.lastSpawn = now;
+    }
+    this.bullets.forEach((bullet) => { bullet.y -= 0.015; });
+    this.enemies.forEach((enemy) => { enemy.y += enemy.speed * 16; });
+    for (let index = this.enemies.length - 1; index >= 0; index -= 1) {
+      const enemy = this.enemies[index];
+      const hit = this.bullets.findIndex((bullet) => Math.abs(bullet.x - enemy.x) < enemy.size * 0.58 && Math.abs(bullet.y - enemy.y) < enemy.size * 0.58);
+      if (hit !== -1) {
+        this.bullets.splice(hit, 1);
+        this.enemies.splice(index, 1);
+        this.score += 10;
+        this.scoreElement.textContent = this.score;
+        if (this.score > this.best) {
+          this.best = this.score;
+          localStorage.setItem('portia-secret-shooter-best', String(this.best));
+          this.bestElement.textContent = this.best;
+        }
+        continue;
+      }
+      if (enemy.y > 1.08 || (Math.abs(enemy.x - this.player.x) < enemy.size * 0.62 && Math.abs(enemy.y - this.player.y) < enemy.size * 0.68)) {
+        this.end();
+      }
+    }
+    this.draw(difficulty);
+    if (this.running) requestAnimationFrame(this.frame);
+  }
+
+  draw(difficulty) {
+    const ctx = this.context;
+    ctx.clearRect(0, 0, this.width, this.height);
+    const gradient = ctx.createLinearGradient(0, 0, 0, this.height);
+    gradient.addColorStop(0, '#061311');
+    gradient.addColorStop(1, '#102624');
+    ctx.fillStyle = gradient;
+    ctx.fillRect(0, 0, this.width, this.height);
+    ctx.fillStyle = 'rgba(108, 230, 205, .52)';
+    this.stars.forEach((star) => {
+      star.y += star.speed * difficulty * 0.003;
+      if (star.y > 1) { star.y = 0; star.x = Math.random(); }
+      ctx.fillRect(star.x * this.width, star.y * this.height, 1.5, 1.5);
+    });
+    ctx.fillStyle = '#64ead0';
+    this.bullets.forEach((bullet) => {
+      ctx.fillRect(bullet.x * this.width - 2, bullet.y * this.height - 9, 4, 13);
+    });
+    this.enemies.forEach((enemy) => {
+      const size = enemy.size * this.width;
+      if (this.enemyImage.complete) ctx.drawImage(this.enemyImage, enemy.x * this.width - size / 2, enemy.y * this.height - size / 2, size, size);
+    });
+    const gunWidth = this.width * 0.17;
+    const gunHeight = gunWidth * 1.9;
+    if (this.weapon.complete) ctx.drawImage(this.weapon, this.player.x * this.width - gunWidth / 2, this.player.y * this.height - gunHeight / 2, gunWidth, gunHeight);
+  }
+
+  end() {
+    this.running = false;
+    this.statusElement.hidden = false;
+    this.statusElement.querySelector('[data-final-score]').textContent = this.score;
+  }
+
+  destroy() {
+    this.running = false;
+    window.removeEventListener('keydown', this.onKeyDown);
+    window.removeEventListener('keyup', this.onKeyUp);
+  }
+}
+
+function openSecretGame() {
+  if (secretGame) return;
+  secretGameReturnPage = SECTIONS[currentIndex]?.id || 'page7';
+  const content = document.getElementById('right-page-content');
+  document.getElementById('paperSectionNumber').textContent = '??';
+  document.getElementById('paperEyebrow').textContent = 'Секретный режим — PORTIA DEFENSE';
+  content.innerHTML = `<section class="secret-game" aria-label="Секретная игра">
+    <div class="game-heading"><div><span class="game-kicker">CLASSIFIED // MINI-GAME</span><h2>PORTIA DEFENSE</h2></div><button type="button" class="game-exit" data-close-secret-game>Выйти ×</button></div>
+    <div class="game-scoreboard"><span>ОЧКИ <b data-game-score>0</b></span><span>РЕКОРД <b data-game-best>0</b></span></div>
+    <div class="game-stage"><canvas data-game-canvas aria-label="Игровое поле"></canvas><div class="game-over" data-game-over hidden><p>U.R.U ПОБЕДИЛИ</p><span>Очки: <b data-final-score>0</b></span><button type="button" data-restart-secret-game>Ещё попытка</button></div></div>
+    <div class="game-controls"><button type="button" data-game-control="ArrowLeft" aria-label="Влево">←</button><button type="button" data-game-control="fire" aria-label="Огонь">ОГОНЬ</button><button type="button" data-game-control="ArrowRight" aria-label="Вправо">→</button></div>
+    <p class="game-hint"> ← / → — движение · ПРОБЕЛ — огонь</p>
+  </section>`;
+  secretGame = new SecretShooter(content.querySelector('[data-game-canvas]'), content.querySelector('[data-game-score]'), content.querySelector('[data-game-best]'), content.querySelector('[data-game-over]'));
+}
+
+function closeSecretGame() {
+  if (!secretGame) return;
+  secretGame.destroy();
+  secretGame = null;
+  currentIndex = -1;
+  switchPage(secretGameReturnPage);
+}
+
 function initNavigation() {
   document.querySelectorAll('.nav-item, .mobile-pill').forEach((button) => {
     button.addEventListener('click', () => switchPage(button.dataset.target));
+  });
+  document.addEventListener('click', (event) => {
+    if (event.target.closest('[data-open-secret-game]')) openSecretGame();
+    if (event.target.closest('[data-close-secret-game]')) closeSecretGame();
+    if (event.target.closest('[data-restart-secret-game]')) {
+      secretGame?.destroy();
+      secretGame = null;
+      openSecretGame();
+    }
+  });
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && secretGame) closeSecretGame();
+    if ((event.key === 'Enter' || event.key === ' ') && event.target.matches('[data-open-secret-game]')) openSecretGame();
   });
 }
 

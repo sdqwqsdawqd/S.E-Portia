@@ -831,3 +831,24 @@ body::before {
     text-decoration: none;
     cursor: pointer;
 }
+
+.secret-game-trigger { cursor: pointer; transition: color .16s ease, border-color .16s ease; }
+.secret-game-trigger:hover, .secret-game-trigger:focus { color: var(--teal-deep); border-bottom-color: var(--teal); }
+.secret-game { font-family: var(--font-mono); color: var(--ink); }
+.game-heading { display: flex; justify-content: space-between; align-items: flex-start; gap: 18px; margin-bottom: 17px; }
+.game-kicker { display: block; color: var(--teal-deep); font-size: 10px; letter-spacing: .14em; }
+.game-heading h2 { margin: 5px 0 0; font-size: 23px; letter-spacing: .04em; }
+.game-exit, .game-over button { border: 1px solid var(--teal-deep); color: var(--teal-deep); background: transparent; padding: 8px 11px; font: 600 12px var(--font-mono); cursor: pointer; }
+.game-exit:hover, .game-over button:hover { background: var(--teal-deep); color: #f6f3ea; }
+.game-scoreboard { display: flex; justify-content: space-between; gap: 12px; padding: 11px 13px; color: #d6fff5; background: var(--bg-deep); font-size: 12px; letter-spacing: .08em; }
+.game-scoreboard b { color: #64ead0; font-size: 15px; }
+.game-stage { position: relative; height: min(58vh, 500px); min-height: 330px; overflow: hidden; border: 2px solid var(--teal-deep); border-top: 0; background: #061311; }
+.game-stage canvas { display: block; width: 100%; height: 100%; image-rendering: pixelated; }
+.game-over { position: absolute; inset: 0; display: grid; place-content: center; justify-items: center; gap: 12px; text-align: center; background: rgba(6, 19, 17, .82); color: #e7fffa; }
+.game-over[hidden] { display: none; }
+.game-over p { margin: 0; color: #64ead0; font-size: 20px; }
+.game-controls { display: none; grid-template-columns: 1fr 1.4fr 1fr; gap: 8px; margin-top: 10px; }
+.game-controls button { min-height: 48px; border: 1px solid var(--teal-deep); color: var(--teal-deep); background: var(--teal-soft); font: 700 16px var(--font-mono); touch-action: none; }
+.game-controls button:active { background: var(--teal-deep); color: #f6f3ea; }
+.game-hint { margin: 13px 0 0; color: var(--muted); font: 11px/1.6 var(--font-mono); }
+@media (max-width: 860px) { .game-stage { height: 52vh; min-height: 310px; } .game-controls { display: grid; } .game-hint { text-align: center; } }
