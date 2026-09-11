@@ -395,7 +395,12 @@ class SecretShooter {
     this.lastFrame = performance.now();
     this.running = true;
     this.player = { x: 0.5, y: 0.84, width: 0.1 };
-    this.shotSounds = ['assets/Laser-shot1.mp3', 'assets/laser-shot2.mp3'];
+    this.shotSounds = ['assets/Laser-shot1.mp3', 'assets/laser-shot2.mp3'].map((source) => {
+      const sound = new Audio(source);
+      sound.preload = 'auto';
+      sound.volume = 0.28;
+      return sound;
+    });
     this.weapon = new Image();
     this.enemyImage = new Image();
     this.weapon.src = 'assets/pistol-minigame.png';
@@ -421,6 +426,8 @@ class SecretShooter {
       const key = control.dataset.gameControl;
       const press = (event) => {
         event.preventDefault();
+        // На телефонах одно удержание иногда вызывает несколько pointer-событий.
+        if (this.keys.has(key)) return;
         control.setPointerCapture?.(event.pointerId);
         this.keys.add(key);
         if (key === 'fire') this.requestShot();
@@ -438,13 +445,15 @@ class SecretShooter {
 
   requestShot() {
     // Отдельное нажатие и задержка не позволяют зажимать или спамить огонь.
-    if (performance.now() - this.lastShot >= 340) this.shotRequested = true;
+    if (performance.now() - this.lastShot < 340) return;
+    this.shotRequested = true;
+    // Важно запускать звук внутри события нажатия: иначе мобильный браузер его блокирует.
+    this.playShotSound();
   }
 
   playShotSound() {
-    const source = this.shotSounds[Math.floor(Math.random() * this.shotSounds.length)];
-    const sound = new Audio(source);
-    sound.volume = 0.28;
+    const sound = this.shotSounds[Math.floor(Math.random() * this.shotSounds.length)];
+    sound.currentTime = 0;
     sound.play().catch(() => {});
   }
 
@@ -463,13 +472,12 @@ class SecretShooter {
     const delta = Math.min(now - this.lastFrame, 40);
     this.lastFrame = now;
     const difficulty = 1 + (now - this.startedAt) / 25000;
-    const move = 0.0035 * difficulty;
+    const move = 0.0075 * difficulty;
     if (this.keys.has('ArrowLeft') || this.keys.has('a') || this.keys.has('A')) this.player.x -= move;
     if (this.keys.has('ArrowRight') || this.keys.has('d') || this.keys.has('D')) this.player.x += move;
     this.player.x = Math.max(0.07, Math.min(0.93, this.player.x));
     if (this.shotRequested) {
       this.bullets.push({ x: this.player.x, y: this.player.y - 0.07 });
-      this.playShotSound();
       this.lastShot = now;
       this.shotRequested = false;
     }
@@ -582,7 +590,7 @@ function openSecretGame() {
   secretGameReturnPage = SECTIONS[currentIndex]?.id || 'page7';
   const content = document.getElementById('right-page-content');
   document.getElementById('paperSectionNumber').textContent = '??';
-  document.getElementById('paperEyebrow').textContent = 'U.R.U на нож!— PORTIA DEFENSE';
+  document.getElementById('paperEyebrow').textContent = 'Мини игра — PORTIA DEFENSE';
   content.innerHTML = `<section class="secret-game" aria-label="Секретная игра">
     <div class="game-heading"><div><span class="game-kicker">CLASSIFIED // MINI-GAME</span><h2>PORTIA DEFENSE</h2></div><button type="button" class="game-exit" data-close-secret-game>Выйти ×</button></div>
     <div class="game-scoreboard"><span>ИГРОК <b>${secretPlayerName}</b></span><span>ОЧКИ <b data-game-score>0</b></span><span>РЕКОРД <b data-game-best>0</b></span></div>
