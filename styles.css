@@ -594,7 +594,7 @@ body::before {
     min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 5px;
+  gap: 4px;
   color: var(--ink-soft);
   font-size: 13.5px;
   line-height: 1.4;
