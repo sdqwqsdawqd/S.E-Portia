@@ -594,7 +594,7 @@ function openSecretGame() {
   content.innerHTML = `<section class="secret-game" aria-label="Секретная игра">
     <div class="game-heading"><div><span class="game-kicker">CLASSIFIED // MINI-GAME</span><h2>PORTIA DEFENSE</h2></div><button type="button" class="game-exit" data-close-secret-game>Выйти ×</button></div>
     <div class="game-scoreboard"><span>ИГРОК <b>${secretPlayerName}</b></span><span>ОЧКИ <b data-game-score>0</b></span><span>РЕКОРД <b data-game-best>0</b></span></div>
-    <div class="game-stage"><canvas data-game-canvas aria-label="Игровое поле"></canvas><div class="game-over" data-game-over hidden><p>СИГНАЛ ПОТЕРЯН</p><span>Очки: <b data-final-score>0</b></span><button type="button" data-restart-secret-game>Ещё попытка</button></div></div>
+    <div class="game-stage"><canvas data-game-canvas aria-label="Игровое поле"></canvas><div class="game-over" data-game-over hidden><p>ПОРТИИ БОЛЬШЕ НЕТ</p><span>Очки: <b data-final-score>0</b></span><button type="button" data-restart-secret-game>Ещё попытка</button></div></div>
     <div class="game-controls"><button type="button" data-game-control="ArrowLeft" aria-label="Влево">←</button><button type="button" data-game-control="fire" aria-label="Огонь">ОГОНЬ</button><button type="button" data-game-control="ArrowRight" aria-label="Вправо">→</button></div>
     <p class="game-hint">← / → — движение · ПРОБЕЛ — огонь · держитесь хлопчики! U.R.U наступает!</p>
     <section class="game-ranking" aria-label="Общий рейтинг"><h3>ОБЩИЙ РЕЙТИНГ // TOP 10</h3><ol data-ranking-list><li>Загрузка рейтинга…</li></ol></section>
