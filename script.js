@@ -18,6 +18,7 @@ const SECTION_FILES = {
 
 const sectionCache = {};
 let currentIndex = -1;
+let navigationRevision = 0;
 let idleWebTimer = null;
 let secretGame = null;
 let secretGameReturnPage = 'page7';
@@ -238,7 +239,7 @@ class SpiderWalker {
 
   startPatrol(targetId) {
     const item = this.items().find((entry) => entry.dataset.target === targetId);
-    if (!item) return;
+    if (!item || !this.container.getClientRects().length || matchMedia('(prefers-reduced-motion: reduce)').matches) return;
 
     const runId = this.runId;
     const startedAt = performance.now();
@@ -331,6 +332,27 @@ class SpiderWalker {
 }
 
 const spiderWalkers = [];
+let paperTurn = null;
+
+function turnPaper(previousSheet, direction) {
+  paperTurn?.cancel();
+  document.querySelectorAll('.paper-turn-sheet').forEach((sheet) => sheet.remove());
+  if (!previousSheet || matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  const paper = document.querySelector('.paper');
+  previousSheet.className = 'paper-turn-sheet';
+  previousSheet.setAttribute('aria-hidden', 'true');
+  previousSheet.inert = true;
+  previousSheet.removeAttribute('id');
+  previousSheet.querySelectorAll('[id]').forEach((node) => node.removeAttribute('id'));
+  previousSheet.style.transformOrigin = direction > 0 ? 'left center' : 'right center';
+  paper.appendChild(previousSheet);
+  paperTurn = previousSheet.animate([
+    { transform: 'perspective(1600px) rotateY(0deg)', opacity: 1 },
+    { transform: `perspective(1600px) rotateY(${direction * -32}deg)`, opacity: .98, offset: .5 },
+    { transform: `perspective(1600px) rotateY(${direction * -92}deg)`, opacity: 0 },
+  ], { duration: 520, easing: 'cubic-bezier(.32,.05,.22,1)', fill: 'forwards' });
+  paperTurn.finished.then(() => previousSheet.remove(), () => previousSheet.remove());
+}
 
 function initSpiderWalkers() {
   const desktopNavigation = document.querySelector('.nav-list');
@@ -350,6 +372,11 @@ async function switchPage(targetId) {
   const targetIndex = SECTIONS.findIndex((section) => section.id === targetId);
   if (targetIndex === -1 || targetIndex === currentIndex) return;
 
+  const revision = ++navigationRevision;
+  const direction = targetIndex >= currentIndex ? 1 : -1;
+  const previousSheet = currentIndex >= 0 && !matchMedia('(prefers-reduced-motion: reduce)').matches
+    ? document.querySelector('.paper').cloneNode(true) : null;
+  previousSheet?.querySelectorAll('.paper-turn-sheet').forEach((sheet) => sheet.remove());
   const meta = SECTIONS[targetIndex];
   const content = document.getElementById('right-page-content');
   document.querySelectorAll('.nav-item, .mobile-pill').forEach((button) => {
@@ -366,95 +393,129 @@ async function switchPage(targetId) {
   document.getElementById('paperEyebrow').textContent = `Раздел ${meta.num} из ${String(SECTIONS.length).padStart(2, '0')} — ${meta.label}`;
 
   try {
-    content.innerHTML = await loadSection(targetId);
+    const html = await loadSection(targetId);
+    if (revision !== navigationRevision || secretGame) return;
+    content.innerHTML = html;
+    turnPaper(previousSheet, direction);
     currentIndex = targetIndex;
   } catch (error) {
+    if (revision !== navigationRevision || secretGame) return;
     console.error('Не удалось загрузить раздел', error);
     content.innerHTML = '<p class="block-text">Не удалось загрузить этот раздел.</p>';
   }
 }
 
+// Decode once; firing never seeks or restarts an HTML media element.
+const gameAudio = {
+  context: null, buffers: [], loading: null,
+  unlock() {
+    try {
+      const Audio = window.AudioContext || window.webkitAudioContext;
+      if (!Audio) return;
+      this.context ||= new Audio({ latencyHint: 'interactive' });
+      if (this.context.state === 'suspended') this.context.resume().catch(() => {});
+      if (!this.loading) this.loading = Promise.all(
+        ['assets/Laser-shot1.mp3', 'assets/laser-shot2.mp3'].map(async (url) => {
+          const response = await fetch(url);
+          if (!response.ok) return;
+          const buffer = await this.context.decodeAudioData(await response.arrayBuffer());
+          this.buffers.push(buffer);
+        })
+      ).catch(() => {});
+    } catch { /* Audio is optional; gameplay remains available. */ }
+  },
+  play() {
+    if (this.context?.state !== 'running' || !this.buffers.length) return;
+    try {
+      const source = this.context.createBufferSource();
+      const gain = this.context.createGain();
+      gain.gain.value = 0.28;
+      source.buffer = this.buffers[Math.floor(Math.random() * this.buffers.length)];
+      source.connect(gain).connect(this.context.destination);
+      source.onended = () => { source.disconnect(); gain.disconnect(); };
+      source.start();
+    } catch { /* Never interrupt a frame for unavailable audio. */ }
+  },
+};
+
 class SecretShooter {
   constructor(canvas, scoreElement, bestElement, statusElement, playerName) {
-    this.canvas = canvas;
+    Object.assign(this, { canvas, scoreElement, bestElement, statusElement, playerName });
     this.context = canvas.getContext('2d');
-    this.scoreElement = scoreElement;
-    this.bestElement = bestElement;
-    this.statusElement = statusElement;
-    this.playerName = playerName;
+    this.events = new AbortController();
     this.keys = new Set();
+    this.pointers = new Map();
     this.bullets = [];
     this.enemies = [];
-    this.stars = Array.from({ length: 46 }, () => ({ x: Math.random(), y: Math.random(), speed: 0.18 + Math.random() * 0.48 }));
+    this.particles = [];
+    this.reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+    this.stars = Array.from({ length: 36 }, () => ({ x: Math.random(), y: Math.random(), speed: 0.18 + Math.random() * 0.48 }));
     this.score = 0;
-    this.best = Number.parseInt(localStorage.getItem('portia-secret-shooter-best') || '0', 10) || 0;
-    this.startedAt = performance.now();
-    this.lastShot = 0;
+    this.best = 0;
+    try { this.best = Number(localStorage.getItem('portia-secret-shooter-best')) || 0; } catch {}
+    this.elapsed = 0;
+    this.lastShot = -340;
     this.shotRequested = false;
-    this.lastSpawn = 0;
+    this.spawnClock = 0;
+    this.flash = 0;
     this.lastFrame = performance.now();
     this.running = true;
     this.player = { x: 0.5, y: 0.84, width: 0.1 };
-    this.shotSounds = ['assets/Laser-shot1.mp3', 'assets/laser-shot2.mp3'].map((source) => {
-      const sound = new Audio(source);
-      sound.preload = 'auto';
-      sound.volume = 0.28;
-      return sound;
-    });
     this.weapon = new Image();
     this.enemyImage = new Image();
     this.weapon.src = 'assets/pistol-minigame.png';
     this.enemyImage.src = 'assets/uru-minigame.png';
     this.frame = this.frame.bind(this);
-    this.onKeyDown = (event) => {
-      if (['ArrowLeft', 'ArrowRight', 'a', 'A', 'd', 'D', ' '].includes(event.key)) event.preventDefault();
-      this.keys.add(event.key);
-      if (event.key === ' ' && !event.repeat) this.requestShot();
+    const action = (event) => {
+      if (event.code === 'KeyA' || ['a', 'ф', 'arrowleft'].includes(event.key.toLowerCase())) return 'left';
+      if (event.code === 'KeyD' || ['d', 'в', 'arrowright'].includes(event.key.toLowerCase())) return 'right';
+      if (event.code === 'Space' || event.key === ' ') return 'fire';
     };
-    this.onKeyUp = (event) => this.keys.delete(event.key);
-    window.addEventListener('keydown', this.onKeyDown);
-    window.addEventListener('keyup', this.onKeyUp);
+    this.listen(window, 'keydown', (event) => {
+      if (event.target.closest?.('input, textarea, select, button, [contenteditable="true"]')) return;
+      const key = action(event);
+      if (!key) return;
+      event.preventDefault();
+      this.keys.add(key);
+      if (!event.repeat) gameAudio.unlock();
+      if (key === 'fire' && !event.repeat) this.requestShot();
+    });
+    this.listen(window, 'keyup', (event) => { const key = action(event); if (key) this.keys.delete(key); });
+    const reset = () => { this.keys.clear(); this.pointers.clear(); this.shotRequested = false; this.lastFrame = performance.now(); };
+    this.listen(window, 'blur', reset);
+    this.listen(document, 'visibilitychange', reset);
     this.attachControls();
     this.resize();
-    window.addEventListener('resize', () => this.resize());
+    this.listen(window, 'resize', () => this.resize());
     this.bestElement.textContent = this.best;
-    requestAnimationFrame(this.frame);
+    this.animationFrame = requestAnimationFrame(this.frame);
   }
+
+  listen(target, event, handler) { target.addEventListener(event, handler, { signal: this.events.signal }); }
 
   attachControls() {
     document.querySelectorAll('[data-game-control]').forEach((control) => {
-      const key = control.dataset.gameControl;
-      const press = (event) => {
+      const key = { ArrowLeft: 'left', ArrowRight: 'right', fire: 'fire' }[control.dataset.gameControl];
+      this.listen(control, 'pointerdown', (event) => {
         event.preventDefault();
-        // На телефонах одно удержание иногда вызывает несколько pointer-событий.
-        if (this.keys.has(key)) return;
+        if (!this.running) return;
         control.setPointerCapture?.(event.pointerId);
-        this.keys.add(key);
+        this.pointers.set(event.pointerId, key);
+        gameAudio.unlock();
         if (key === 'fire') this.requestShot();
-      };
-      const release = (event) => { event.preventDefault(); this.keys.delete(key); };
-      control.addEventListener('pointerdown', press);
-      control.addEventListener('pointerup', release);
-      control.addEventListener('pointerleave', release);
-      control.addEventListener('pointercancel', release);
-      control.addEventListener('touchstart', (event) => event.preventDefault(), { passive: false });
-      control.addEventListener('selectstart', (event) => event.preventDefault());
-      control.addEventListener('dragstart', (event) => event.preventDefault());
+      });
+      const release = (event) => this.pointers.delete(event.pointerId);
+      ['pointerup', 'pointercancel', 'lostpointercapture'].forEach((event) => this.listen(control, event, release));
+      this.listen(control, 'click', (event) => {
+        if (event.detail === 0 && key === 'fire') { gameAudio.unlock(); this.requestShot(); }
+      });
+      this.listen(control, 'contextmenu', (event) => event.preventDefault());
     });
   }
 
   requestShot() {
-    // Отдельное нажатие и задержка не позволяют зажимать или спамить огонь.
-    if (performance.now() - this.lastShot < 340) return;
+    if (!this.running || this.shotRequested || this.elapsed - this.lastShot < 280) return;
     this.shotRequested = true;
-    // Важно запускать звук внутри события нажатия: иначе мобильный браузер его блокирует.
-    this.playShotSound();
-  }
-
-  playShotSound() {
-    const sound = this.shotSounds[Math.floor(Math.random() * this.shotSounds.length)];
-    sound.currentTime = 0;
-    sound.play().catch(() => {});
   }
 
   resize() {
@@ -465,64 +526,75 @@ class SecretShooter {
     this.context.setTransform(ratio, 0, 0, ratio, 0, 0);
     this.width = bounds.width;
     this.height = bounds.height;
+    this.background = this.context.createLinearGradient(0, 0, 0, this.height);
+    this.background.addColorStop(0, '#061311');
+    this.background.addColorStop(1, '#102624');
   }
 
   frame(now) {
     if (!this.running) return;
-    const delta = Math.min(now - this.lastFrame, 40);
+    const delta = document.hidden ? 0 : Math.max(0, Math.min(now - this.lastFrame, 40));
     this.lastFrame = now;
-    const difficulty = 1 + (now - this.startedAt) / 25000;
-    const move = 0.0075 * difficulty;
-    if (this.keys.has('ArrowLeft') || this.keys.has('a') || this.keys.has('A')) this.player.x -= move;
-    if (this.keys.has('ArrowRight') || this.keys.has('d') || this.keys.has('D')) this.player.x += move;
+    this.elapsed += delta;
+    // Smooth ramp over two minutes, capped so late runs stay playable.
+    const difficulty = 1 - Math.exp(-this.elapsed / 65000);
+    const held = (key) => this.keys.has(key) || [...this.pointers.values()].includes(key);
+    this.player.x += ((held('right') ? 1 : 0) - (held('left') ? 1 : 0)) * delta * 0.00062;
     this.player.x = Math.max(0.07, Math.min(0.93, this.player.x));
-    if (this.shotRequested) {
+    if (this.shotRequested && delta > 0) {
       this.bullets.push({ x: this.player.x, y: this.player.y - 0.07 });
-      this.lastShot = now;
+      this.lastShot = this.elapsed;
       this.shotRequested = false;
+      this.flash = 90;
+      gameAudio.play();
     }
-    const spawnInterval = Math.max(420, 1450 - difficulty * 125);
-    if (now - this.lastSpawn > spawnInterval) {
-      this.enemies.push({ x: 0.1 + Math.random() * 0.8, y: -0.1, speed: 0.00016 + difficulty * 0.000055, size: 0.085 + Math.random() * 0.035 });
-      this.lastSpawn = now;
+    this.flash = Math.max(0, this.flash - delta);
+    this.spawnClock += delta;
+    const rest = this.elapsed % 24000 > 20500;
+    const spawnInterval = (1050 - difficulty * 590) * (rest ? 1.65 : 1);
+    if (this.spawnClock >= spawnInterval && this.enemies.length < 12) {
+      // Nearby lanes limit impossible cross-screen trips, especially on phones.
+      const anchor = this.enemies.at(-1)?.x ?? this.player.x;
+      const x = Math.max(0.1, Math.min(0.9, anchor + (Math.random() - 0.5) * 0.65));
+      this.enemies.push({ x, y: -0.1, speed: 0.00019 + difficulty * 0.00011, size: 0.10 });
+      this.spawnClock = 0;
     }
-    this.bullets.forEach((bullet) => { bullet.y -= 0.015; });
+    this.bullets.forEach((bullet) => { bullet.y -= delta * 0.001; });
+    this.bullets = this.bullets.filter((bullet) => bullet.y > -0.08);
     this.enemies.forEach((enemy) => { enemy.y += enemy.speed * delta; });
     for (let index = this.enemies.length - 1; index >= 0; index -= 1) {
       const enemy = this.enemies[index];
-      const hit = this.bullets.findIndex((bullet) => Math.abs(bullet.x - enemy.x) < enemy.size * 0.58 && Math.abs(bullet.y - enemy.y) < enemy.size * 0.58);
+      const hit = this.bullets.findIndex((bullet) => Math.abs(bullet.x - enemy.x) < enemy.size * 0.58 && Math.abs(bullet.y - enemy.y) < enemy.size * this.width / this.height * 0.58 + 0.015);
       if (hit !== -1) {
         this.bullets.splice(hit, 1);
         this.enemies.splice(index, 1);
+        if (!this.reducedMotion) for (let i = 0; i < 8 && this.particles.length < 64; i++) {
+          const angle = Math.PI * 2 * i / 8;
+          this.particles.push({ x: enemy.x, y: enemy.y, vx: Math.cos(angle) * 0.00012, vy: Math.sin(angle) * 0.00012, life: 400 });
+        }
         this.score += 10;
         this.scoreElement.textContent = this.score;
-        if (this.score > this.best) {
-          this.best = this.score;
-          localStorage.setItem('portia-secret-shooter-best', String(this.best));
-          this.bestElement.textContent = this.best;
-        }
+        if (this.score > this.best) { this.best = this.score; this.bestElement.textContent = this.best; }
         continue;
       }
       if (enemy.y > 1.08 || (Math.abs(enemy.x - this.player.x) < enemy.size * 0.62 && Math.abs(enemy.y - this.player.y) < enemy.size * 0.68)) {
-        this.enemies.splice(index, 1);
         this.end();
+        break;
       }
     }
-    this.draw(difficulty);
-    if (this.running) requestAnimationFrame(this.frame);
+    this.particles.forEach((p) => { p.life -= delta; p.x += p.vx * delta; p.y += p.vy * delta; });
+    this.particles = this.particles.filter((p) => p.life > 0);
+    this.draw(difficulty, delta);
+    if (this.running) this.animationFrame = requestAnimationFrame(this.frame);
   }
-
-  draw(difficulty) {
+  draw(difficulty, delta) {
     const ctx = this.context;
     ctx.clearRect(0, 0, this.width, this.height);
-    const gradient = ctx.createLinearGradient(0, 0, 0, this.height);
-    gradient.addColorStop(0, '#061311');
-    gradient.addColorStop(1, '#102624');
-    ctx.fillStyle = gradient;
+    ctx.fillStyle = this.background;
     ctx.fillRect(0, 0, this.width, this.height);
     ctx.fillStyle = 'rgba(108, 230, 205, .52)';
     this.stars.forEach((star) => {
-      star.y += star.speed * difficulty * 0.003;
+      star.y += star.speed * (1 + difficulty * 0.25) * delta * 0.00018;
       if (star.y > 1) { star.y = 0; star.x = Math.random(); }
       ctx.fillRect(star.x * this.width, star.y * this.height, 1.5, 1.5);
     });
@@ -532,15 +604,31 @@ class SecretShooter {
     });
     this.enemies.forEach((enemy) => {
       const size = enemy.size * this.width;
-      if (this.enemyImage.complete) ctx.drawImage(this.enemyImage, enemy.x * this.width - size / 2, enemy.y * this.height - size / 2, size, size);
+      if (this.enemyImage.complete && this.enemyImage.naturalWidth) ctx.drawImage(this.enemyImage, enemy.x * this.width - size / 2, enemy.y * this.height - size / 2, size, size);
     });
+    this.particles.forEach((p) => {
+      ctx.globalAlpha = p.life / 400;
+      ctx.fillStyle = '#a1ffe9';
+      ctx.fillRect(p.x * this.width, p.y * this.height, 3, 3);
+    });
+    ctx.globalAlpha = 1;
+    if (this.flash > 0 && !this.reducedMotion) {
+      ctx.fillStyle = `rgba(195,255,231,${this.flash / 110})`;
+      ctx.beginPath();
+      ctx.arc(this.player.x * this.width, (this.player.y - 0.07) * this.height, 7, 0, Math.PI * 2);
+      ctx.fill();
+    }
     const gunWidth = this.width * 0.11;
     const gunHeight = gunWidth * 1.9;
-    if (this.weapon.complete) ctx.drawImage(this.weapon, this.player.x * this.width - gunWidth / 2, this.player.y * this.height - gunHeight / 2, gunWidth, gunHeight);
+    if (this.weapon.complete && this.weapon.naturalWidth) ctx.drawImage(this.weapon, this.player.x * this.width - gunWidth / 2, this.player.y * this.height - gunHeight / 2, gunWidth, gunHeight);
   }
 
+  persistBest() { try { localStorage.setItem('portia-secret-shooter-best', String(this.best)); } catch {} }
+
   end() {
+    if (!this.running) return;
     this.running = false;
+    this.persistBest();
     this.statusElement.hidden = false;
     this.statusElement.querySelector('[data-final-score]').textContent = this.score;
     if (this.score > 0 && window.PortiaRanking) {
@@ -552,8 +640,11 @@ class SecretShooter {
 
   destroy() {
     this.running = false;
-    window.removeEventListener('keydown', this.onKeyDown);
-    window.removeEventListener('keyup', this.onKeyUp);
+    cancelAnimationFrame(this.animationFrame);
+    this.events.abort();
+    this.pointers.clear();
+    this.keys.clear();
+    this.persistBest();
   }
 }
 
@@ -578,12 +669,37 @@ function renderLeaderboard(game) {
   }).catch(() => { list.innerHTML = '<li>Рейтинг временно недоступен.</li>'; });
 }
 
-function openSecretGame() {
+function openSecretGame(restart = false) {
   if (secretGame) return;
   const currentName = window.PortiaRanking?.getName() || localStorage.getItem('portia-secret-shooter-name') || '';
-  const requestedName = window.prompt('Введите ваш ник для общего рейтинга (до 16 символов):', currentName);
+  if (!restart) {
+    if (document.querySelector('.game-name-dialog')) return;
+    const dialog = document.createElement('dialog');
+    dialog.className = 'game-name-dialog';
+    dialog.innerHTML = '<form><h2>PORTIA DEFENSE</h2><label for="game-player-name">Ник для общего рейтинга</label><input id="game-player-name" name="nickname" maxlength="16" required autocomplete="nickname"><div><button type="button" data-cancel>Отмена</button><button type="submit">Играть</button></div></form>';
+    const input = dialog.querySelector('input');
+    input.value = currentName;
+    dialog.querySelector('[data-cancel]').addEventListener('click', () => dialog.close());
+    dialog.addEventListener('close', () => dialog.remove(), { once: true });
+    dialog.querySelector('form').addEventListener('submit', (event) => {
+      event.preventDefault();
+      const name = input.value.replace(/[^\p{L}\p{N}_\- ]/gu, '').trim().slice(0, 16);
+      if (!name) { input.setCustomValidity('Введите буквы или цифры'); input.reportValidity(); return; }
+      secretPlayerName = name;
+      dialog.close();
+      openSecretGame(true);
+    });
+    input.addEventListener('input', () => input.setCustomValidity(''));
+    document.body.appendChild(dialog);
+    dialog.showModal();
+    input.focus();
+    return;
+  }
+  const requestedName = secretPlayerName;
   const playerName = String(requestedName || '').replace(/[^\p{L}\p{N}_\- ]/gu, '').trim().slice(0, 16);
   if (!playerName) return;
+  gameAudio.unlock();
+  spiderWalkers.forEach((walker) => walker.stop());
   secretPlayerName = playerName;
   localStorage.setItem('portia-secret-shooter-name', playerName);
   window.PortiaRanking?.setName(playerName);
@@ -596,10 +712,13 @@ function openSecretGame() {
     <div class="game-scoreboard"><span>ИГРОК <b>${secretPlayerName}</b></span><span>ОЧКИ <b data-game-score>0</b></span><span>РЕКОРД <b data-game-best>0</b></span></div>
     <div class="game-stage"><canvas data-game-canvas aria-label="Игровое поле"></canvas><div class="game-over" data-game-over hidden><p>ПОРТИИ БОЛЬШЕ НЕТ</p><span>Очки: <b data-final-score>0</b></span><button type="button" data-restart-secret-game>Ещё попытка</button></div></div>
     <div class="game-controls"><button type="button" data-game-control="ArrowLeft" aria-label="Влево">←</button><button type="button" data-game-control="fire" aria-label="Огонь">ОГОНЬ</button><button type="button" data-game-control="ArrowRight" aria-label="Вправо">→</button></div>
-    <p class="game-hint">← / → — движение · ПРОБЕЛ — огонь · держитесь хлопчики! U.R.U наступает!</p>
+    <p class="game-hint">← / → · A / D · Ф / В — движение · ПРОБЕЛ — огонь · держитесь хлопчики! U.R.U наступает!</p>
     <section class="game-ranking" aria-label="Общий рейтинг"><h3>ОБЩИЙ РЕЙТИНГ // TOP 10</h3><ol data-ranking-list><li>Загрузка рейтинга…</li></ol></section>
   </section>`;
   secretGame = new SecretShooter(content.querySelector('[data-game-canvas]'), content.querySelector('[data-game-score]'), content.querySelector('[data-game-best]'), content.querySelector('[data-game-over]'), secretPlayerName);
+  const gameCanvas = content.querySelector('[data-game-canvas]');
+  gameCanvas.tabIndex = 0;
+  gameCanvas.focus({ preventScroll: true });
   renderLeaderboard(content.querySelector('.secret-game'));
 }
 
@@ -621,7 +740,7 @@ function initNavigation() {
     if (event.target.closest('[data-restart-secret-game]')) {
       secretGame?.destroy();
       secretGame = null;
-      openSecretGame();
+      openSecretGame(true);
     }
   });
   document.addEventListener('keydown', (event) => {

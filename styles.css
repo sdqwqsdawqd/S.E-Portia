@@ -860,3 +860,25 @@ body::before {
 .game-ranking li:first-child { color: var(--teal-deep); }
 .game-ranking b { color: var(--teal-deep); }
 @media (max-width: 860px) { .game-stage { height: 52vh; min-height: 310px; } .game-controls { display: grid; } .game-hint { text-align: center; } }
+
+/* Lightweight motion and reliable simultaneous touch controls. */
+.paper-turn-sheet { position: absolute; inset: 0; z-index: 6; overflow: hidden; padding: inherit; box-sizing: border-box; pointer-events: none; background: var(--paper) url('assets/paper-web.svg') center / 100% 100%; border: 1px solid var(--paper-edge); backface-visibility: hidden; box-shadow: 12px 4px 24px rgba(0,0,0,.18); will-change: transform, opacity; }
+.paper-turn-sheet::after { content: ''; position: absolute; inset: 0; pointer-events: none; background: linear-gradient(90deg, rgba(79,65,40,.12), transparent 12%, transparent 75%, rgba(255,255,255,.55) 95%, rgba(79,65,40,.18)); }
+.game-name-dialog { width: min(360px, calc(100vw - 40px)); box-sizing: border-box; padding: 24px; border: 1px solid var(--teal-deep); background: var(--paper); color: var(--ink); font-family: var(--font-mono); }
+.game-name-dialog::backdrop { background: rgba(6,19,17,.75); }
+.game-name-dialog form { display: grid; gap: 16px; }
+.game-name-dialog h2 { margin: 0; font-size: 22px; }
+.game-name-dialog input { width: 100%; box-sizing: border-box; font: inherit; padding: 12px; }
+.game-name-dialog form > div { display: flex; justify-content: flex-end; gap: 12px; }
+.game-name-dialog button { padding: 10px 14px; font: inherit; cursor: pointer; }
+.game-controls, .game-controls * { touch-action: none; }
+.game-controls button { transition: transform .12s ease, background-color .12s ease; }
+.game-controls button:active { transform: scale(.96); }
+.secret-game, .game-over:not([hidden]) { animation: game-enter .25s ease-out; }
+.game-scoreboard { flex-wrap: wrap; }
+.game-hint { font-size: 13px; }
+@keyframes game-enter { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+@media (pointer: coarse) { .game-controls { display: grid; } }
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; scroll-behavior: auto !important; }
+}
