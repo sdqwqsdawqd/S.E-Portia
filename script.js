@@ -353,34 +353,35 @@ function captureCurrentSheet() {
 function turnPaper(snapshot, direction) {
   paperTurn?.cancel();
   document.querySelectorAll('.paper-turn-sheet').forEach((sheet) => sheet.remove());
-  if (!snapshot || matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  if (!snapshot) return;
 
   const paper = document.querySelector('.paper');
   const { sheet, height } = snapshot;
   const lockedHeight = Math.max(height, paper.offsetHeight);
-  const midpoint = direction > 0 ? '-42%' : '42%';
-  const destination = direction > 0 ? '-104%' : '104%';
 
   sheet.style.height = `${height}px`;
   paper.style.minHeight = `${lockedHeight}px`;
   paper.classList.add('is-turning');
   paper.appendChild(sheet);
 
-  const animation = sheet.animate([
-    { transform: 'translate3d(0, 0, 0)', opacity: 1 },
-    { transform: `translate3d(0, ${midpoint}, 0)`, opacity: .98, offset: .58 },
-    { transform: `translate3d(0, ${destination}, 0)`, opacity: .72 },
-  ], { duration: 560, easing: 'cubic-bezier(.68,0,.32,1)', fill: 'forwards' });
-  paperTurn = animation;
-
+  let fallbackTimer;
+  const animation = { cancel: () => finish() };
   const finish = () => {
+    window.clearTimeout(fallbackTimer);
+    sheet.removeEventListener('animationend', onAnimationEnd);
     sheet.remove();
     if (paperTurn !== animation) return;
     paper.classList.remove('is-turning');
     paper.style.minHeight = '';
     paperTurn = null;
   };
-  animation.finished.then(finish, finish);
+  const onAnimationEnd = (event) => {
+    if (event.target === sheet) finish();
+  };
+  paperTurn = animation;
+  sheet.addEventListener('animationend', onAnimationEnd);
+  sheet.classList.add(direction > 0 ? 'paper-turn-up' : 'paper-turn-down');
+  fallbackTimer = window.setTimeout(finish, 850);
 }
 
 function initSpiderWalkers() {
@@ -403,7 +404,7 @@ async function switchPage(targetId) {
 
   const revision = ++navigationRevision;
   const direction = targetIndex > currentIndex ? 1 : -1;
-  const previousSheet = currentIndex >= 0 && !matchMedia('(prefers-reduced-motion: reduce)').matches
+  const previousSheet = currentIndex >= 0
     ? captureCurrentSheet() : null;
   const meta = SECTIONS[targetIndex];
   const content = document.getElementById('right-page-content');

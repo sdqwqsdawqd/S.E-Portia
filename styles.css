@@ -883,3 +883,22 @@ body::before {
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; scroll-behavior: auto !important; }
 }
+
+/* Page transitions remain enabled on desktop and mobile, including reduced-motion devices. */
+.paper-turn-sheet.paper-turn-up,
+.paper-turn-sheet.paper-turn-down {
+  animation-duration: 560ms !important;
+  animation-timing-function: cubic-bezier(.68, 0, .32, 1);
+  animation-fill-mode: forwards;
+  animation-iteration-count: 1;
+}
+.paper-turn-up { animation-name: paper-slide-up; }
+.paper-turn-down { animation-name: paper-slide-down; }
+@keyframes paper-slide-up {
+  from { transform: translate3d(0, 0, 0); opacity: 1; }
+  to { transform: translate3d(0, -104%, 0); opacity: .72; }
+}
+@keyframes paper-slide-down {
+  from { transform: translate3d(0, 0, 0); opacity: 1; }
+  to { transform: translate3d(0, 104%, 0); opacity: .72; }
+}
