@@ -16,7 +16,7 @@
   --teal-soft: rgba(18, 137, 122, 0.14);
   --danger: #b93a2f;
   --danger-soft: rgba(185, 58, 47, 0.13);
-  --highlight-green-soft: rgba(73, 224, 123, 0.13);;
+  --highlight-green-soft: rgba(73, 224, 123, 0.13);
   --hightlight-green: #3fbd68;
   --hightlight-orange-soft: rgba(231, 156, 63, 0.13);
   --hightlight-orange: #e89a3d;
@@ -862,8 +862,9 @@ body::before {
 @media (max-width: 860px) { .game-stage { height: 52vh; min-height: 310px; } .game-controls { display: grid; } .game-hint { text-align: center; } }
 
 /* Lightweight motion and reliable simultaneous touch controls. */
-.paper-turn-sheet { position: absolute; inset: 0; z-index: 6; overflow: hidden; padding: inherit; box-sizing: border-box; pointer-events: none; background: var(--paper) url('assets/paper-web.svg') center / 100% 100%; border: 1px solid var(--paper-edge); backface-visibility: hidden; box-shadow: 12px 4px 24px rgba(0,0,0,.18); will-change: transform, opacity; }
-.paper-turn-sheet::after { content: ''; position: absolute; inset: 0; pointer-events: none; background: linear-gradient(90deg, rgba(79,65,40,.12), transparent 12%, transparent 75%, rgba(255,255,255,.55) 95%, rgba(79,65,40,.18)); }
+.paper.is-turning { overflow: hidden; }
+.paper-turn-sheet { position: absolute; inset: 0 0 auto; z-index: 6; overflow: hidden; padding: inherit; box-sizing: border-box; pointer-events: none; background: var(--paper) url('assets/paper-web.svg') center / 100% 100%; border: 1px solid var(--paper-edge); backface-visibility: hidden; box-shadow: 0 18px 26px rgba(0,0,0,.24); will-change: transform, opacity; }
+.paper-turn-sheet::after { content: ''; position: absolute; inset: 0; pointer-events: none; background: linear-gradient(180deg, rgba(255,255,255,.22), transparent 13%, transparent 76%, rgba(79,65,40,.18)); }
 .game-name-dialog { width: min(360px, calc(100vw - 40px)); box-sizing: border-box; padding: 24px; border: 1px solid var(--teal-deep); background: var(--paper); color: var(--ink); font-family: var(--font-mono); }
 .game-name-dialog::backdrop { background: rgba(6,19,17,.75); }
 .game-name-dialog form { display: grid; gap: 16px; }

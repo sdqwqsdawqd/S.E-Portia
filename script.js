@@ -334,24 +334,53 @@ class SpiderWalker {
 const spiderWalkers = [];
 let paperTurn = null;
 
-function turnPaper(previousSheet, direction) {
+function captureCurrentSheet() {
+  const paper = document.querySelector('.paper');
+  if (!paper) return null;
+
+  const sheet = document.createElement('div');
+  sheet.className = 'paper-turn-sheet';
+  Array.from(paper.children)
+    .filter((child) => !child.classList.contains('paper-turn-sheet'))
+    .forEach((child) => sheet.appendChild(child.cloneNode(true)));
+
+  sheet.querySelectorAll('[id]').forEach((node) => node.removeAttribute('id'));
+  sheet.setAttribute('aria-hidden', 'true');
+  sheet.inert = true;
+  return { sheet, height: paper.offsetHeight };
+}
+
+function turnPaper(snapshot, direction) {
   paperTurn?.cancel();
   document.querySelectorAll('.paper-turn-sheet').forEach((sheet) => sheet.remove());
-  if (!previousSheet || matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  if (!snapshot || matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+
   const paper = document.querySelector('.paper');
-  previousSheet.className = 'paper-turn-sheet';
-  previousSheet.setAttribute('aria-hidden', 'true');
-  previousSheet.inert = true;
-  previousSheet.removeAttribute('id');
-  previousSheet.querySelectorAll('[id]').forEach((node) => node.removeAttribute('id'));
-  previousSheet.style.transformOrigin = direction > 0 ? 'left center' : 'right center';
-  paper.appendChild(previousSheet);
-  paperTurn = previousSheet.animate([
-    { transform: 'perspective(1600px) rotateY(0deg)', opacity: 1 },
-    { transform: `perspective(1600px) rotateY(${direction * -32}deg)`, opacity: .98, offset: .5 },
-    { transform: `perspective(1600px) rotateY(${direction * -92}deg)`, opacity: 0 },
-  ], { duration: 520, easing: 'cubic-bezier(.32,.05,.22,1)', fill: 'forwards' });
-  paperTurn.finished.then(() => previousSheet.remove(), () => previousSheet.remove());
+  const { sheet, height } = snapshot;
+  const lockedHeight = Math.max(height, paper.offsetHeight);
+  const midpoint = direction > 0 ? '-42%' : '42%';
+  const destination = direction > 0 ? '-104%' : '104%';
+
+  sheet.style.height = `${height}px`;
+  paper.style.minHeight = `${lockedHeight}px`;
+  paper.classList.add('is-turning');
+  paper.appendChild(sheet);
+
+  const animation = sheet.animate([
+    { transform: 'translate3d(0, 0, 0)', opacity: 1 },
+    { transform: `translate3d(0, ${midpoint}, 0)`, opacity: .98, offset: .58 },
+    { transform: `translate3d(0, ${destination}, 0)`, opacity: .72 },
+  ], { duration: 560, easing: 'cubic-bezier(.68,0,.32,1)', fill: 'forwards' });
+  paperTurn = animation;
+
+  const finish = () => {
+    sheet.remove();
+    if (paperTurn !== animation) return;
+    paper.classList.remove('is-turning');
+    paper.style.minHeight = '';
+    paperTurn = null;
+  };
+  animation.finished.then(finish, finish);
 }
 
 function initSpiderWalkers() {
@@ -368,20 +397,21 @@ function initSpiderWalkers() {
 }
 
 async function switchPage(targetId) {
-  if (secretGame) closeSecretGame();
+  if (secretGame) closeSecretGame(false);
   const targetIndex = SECTIONS.findIndex((section) => section.id === targetId);
   if (targetIndex === -1 || targetIndex === currentIndex) return;
 
   const revision = ++navigationRevision;
-  const direction = targetIndex >= currentIndex ? 1 : -1;
+  const direction = targetIndex > currentIndex ? 1 : -1;
   const previousSheet = currentIndex >= 0 && !matchMedia('(prefers-reduced-motion: reduce)').matches
-    ? document.querySelector('.paper').cloneNode(true) : null;
-  previousSheet?.querySelectorAll('.paper-turn-sheet').forEach((sheet) => sheet.remove());
+    ? captureCurrentSheet() : null;
   const meta = SECTIONS[targetIndex];
   const content = document.getElementById('right-page-content');
   document.querySelectorAll('.nav-item, .mobile-pill').forEach((button) => {
     const active = button.dataset.target === targetId;
     button.classList.toggle('active', active);
+    if (active) button.setAttribute('aria-current', 'page');
+    else button.removeAttribute('aria-current');
     if (active && button.classList.contains('mobile-pill')) {
       button.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
     }
@@ -389,12 +419,12 @@ async function switchPage(targetId) {
 
   spiderWalkers.forEach((walker) => walker.walkTo(targetId));
   scheduleIdleWeb(targetId);
-  document.getElementById('paperSectionNumber').textContent = meta.num;
-  document.getElementById('paperEyebrow').textContent = `Раздел ${meta.num} из ${String(SECTIONS.length).padStart(2, '0')} — ${meta.label}`;
 
   try {
     const html = await loadSection(targetId);
     if (revision !== navigationRevision || secretGame) return;
+    document.getElementById('paperSectionNumber').textContent = meta.num;
+    document.getElementById('paperEyebrow').textContent = `Раздел ${meta.num} из ${String(SECTIONS.length).padStart(2, '0')} — ${meta.label}`;
     content.innerHTML = html;
     turnPaper(previousSheet, direction);
     currentIndex = targetIndex;
@@ -663,7 +693,11 @@ function renderLeaderboard(game) {
     }
     scores.forEach((entry, index) => {
       const item = document.createElement('li');
-      item.innerHTML = `<span>${index + 1}. ${entry.nickname}</span><b>${entry.score}</b>`;
+      const player = document.createElement('span');
+      const score = document.createElement('b');
+      player.textContent = `${index + 1}. ${entry.nickname}`;
+      score.textContent = String(entry.score);
+      item.append(player, score);
       list.appendChild(item);
     });
   }).catch(() => { list.innerHTML = '<li>Рейтинг временно недоступен.</li>'; });
@@ -722,12 +756,12 @@ function openSecretGame(restart = false) {
   renderLeaderboard(content.querySelector('.secret-game'));
 }
 
-function closeSecretGame() {
+function closeSecretGame(restorePage = true) {
   if (!secretGame) return;
   secretGame.destroy();
   secretGame = null;
   currentIndex = -1;
-  switchPage(secretGameReturnPage);
+  if (restorePage) switchPage(secretGameReturnPage);
 }
 
 function initNavigation() {
