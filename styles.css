@@ -210,6 +210,8 @@ body::before {
 
 /* Паутина появляется только после долгого пребывания на разделе. */
 .button-web {
+  width: calc(100% + 18px);
+  height: calc(100% + 14px);
   position: absolute;
   inset: -7px -9px;
   overflow: visible;
@@ -901,4 +903,15 @@ body::before {
 @keyframes paper-slide-down {
   from { transform: translate3d(0, 0, 0); opacity: 1; }
   to { transform: translate3d(0, 104%, 0); opacity: .72; }
+}
+
+.spider-print.is-visible { animation-duration: 1.8s !important; }
+.nav-item.web-covered .button-web,
+.mobile-pill.web-covered .button-web { animation-duration: 1.8s !important; }
+@media (max-width: 860px) {
+  body::before { top: 60px; right: -90px; width: 520px; height: 620px; opacity: .25; }
+  .mobile-tabs { padding-top: 9px; padding-bottom: 18px; }
+  .mobile-pill .button-web { inset: 0; width: 100%; height: 100%; }
+  .mobile-tabs .nav-web path { stroke-width: 1; stroke: rgba(110, 205, 185, .48); }
+  .paper { background-size: auto 100%; background-position: right top; }
 }

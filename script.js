@@ -95,6 +95,7 @@ function addNavigationWeb(container, itemSelector) {
 
   redraw();
   window.addEventListener('resize', redraw);
+  document.fonts?.ready.then(redraw);
 }
 
 function scheduleIdleWeb(targetId) {
@@ -162,7 +163,10 @@ class SpiderWalker {
     });
 
     this.resizeLayer();
-    window.addEventListener('resize', () => this.resizeLayer());
+    window.addEventListener('resize', () => {
+      this.resizeLayer();
+      if (this.currentTarget) this.walkTo(this.currentTarget);
+    });
   }
 
   resizeLayer() {
@@ -239,7 +243,7 @@ class SpiderWalker {
 
   startPatrol(targetId) {
     const item = this.items().find((entry) => entry.dataset.target === targetId);
-    if (!item || !this.container.getClientRects().length || matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    if (!item || !this.container.getClientRects().length) return;
 
     const runId = this.runId;
     const startedAt = performance.now();
@@ -573,20 +577,25 @@ class SecretShooter {
     this.player.x += ((held('right') ? 1 : 0) - (held('left') ? 1 : 0)) * delta * 0.00062;
     this.player.x = Math.max(0.07, Math.min(0.93, this.player.x));
     if (this.shotRequested && delta > 0) {
-      this.bullets.push({ x: this.player.x, y: this.player.y - 0.07 });
+      this.bullets.push({ x: this.player.x, y: this.player.y - (this.width * 0.1045 / this.height) });
       this.lastShot = this.elapsed;
       this.shotRequested = false;
-      this.flash = 90;
+      this.flash = 170;
       gameAudio.play();
     }
     this.flash = Math.max(0, this.flash - delta);
     this.spawnClock += delta;
     const rest = this.elapsed % 24000 > 20500;
-    const spawnInterval = (1050 - difficulty * 590) * (rest ? 1.65 : 1);
-    if (this.spawnClock >= spawnInterval && this.enemies.length < 12) {
-      // Nearby lanes limit impossible cross-screen trips, especially on phones.
-      const anchor = this.enemies.at(-1)?.x ?? this.player.x;
-      const x = Math.max(0.1, Math.min(0.9, anchor + (Math.random() - 0.5) * 0.65));
+    const spawnInterval = (760 - difficulty * 410) * (rest ? 1.2 : 1);
+    if (this.spawnClock >= spawnInterval && this.enemies.length < 18) {
+      // Choose a separated lane most of the time; occasional close spawns add variety.
+      const recent = this.enemies.filter((enemy) => enemy.y < 0.3);
+      const candidates = Array.from({ length: 16 }, () => 0.1 + Math.random() * 0.8);
+      const separation = (x) => Math.min(1, ...recent.map((enemy) => Math.abs(enemy.x - x)));
+      const spaced = candidates.filter((x) => separation(x) >= 0.23);
+      const x = Math.random() < 0.08 ? candidates[0]
+        : spaced.length ? spaced[Math.floor(Math.random() * spaced.length)]
+        : candidates.reduce((best, candidate) => separation(candidate) > separation(best) ? candidate : best);
       this.enemies.push({ x, y: -0.1, speed: 0.00019 + difficulty * 0.00011, size: 0.10 });
       this.spawnClock = 0;
     }
@@ -631,6 +640,9 @@ class SecretShooter {
     });
     ctx.fillStyle = '#64ead0';
     this.bullets.forEach((bullet) => {
+      ctx.fillStyle = 'rgba(100,234,208,.25)';
+      ctx.fillRect(bullet.x * this.width - 3, bullet.y * this.height, 6, 26);
+      ctx.fillStyle = '#d8fff3';
       ctx.fillRect(bullet.x * this.width - 2, bullet.y * this.height - 9, 4, 13);
     });
     this.enemies.forEach((enemy) => {
@@ -643,15 +655,27 @@ class SecretShooter {
       ctx.fillRect(p.x * this.width, p.y * this.height, 3, 3);
     });
     ctx.globalAlpha = 1;
-    if (this.flash > 0 && !this.reducedMotion) {
-      ctx.fillStyle = `rgba(195,255,231,${this.flash / 110})`;
-      ctx.beginPath();
-      ctx.arc(this.player.x * this.width, (this.player.y - 0.07) * this.height, 7, 0, Math.PI * 2);
-      ctx.fill();
-    }
     const gunWidth = this.width * 0.11;
     const gunHeight = gunWidth * 1.9;
-    if (this.weapon.complete && this.weapon.naturalWidth) ctx.drawImage(this.weapon, this.player.x * this.width - gunWidth / 2, this.player.y * this.height - gunHeight / 2, gunWidth, gunHeight);
+    const shotProgress = this.flash / 170;
+    const recoil = Math.sin(shotProgress * Math.PI) * gunWidth * 0.18;
+    const muzzleX = this.player.x * this.width;
+    const muzzleY = this.player.y * this.height - gunHeight / 2 + recoil;
+    if (this.weapon.complete && this.weapon.naturalWidth) ctx.drawImage(this.weapon, muzzleX - gunWidth / 2, muzzleY, gunWidth, gunHeight);
+    if (this.flash > 65) {
+      ctx.save();
+      ctx.globalAlpha = (this.flash - 65) / 105;
+      ctx.fillStyle = '#b7ffe2';
+      ctx.beginPath();
+      ctx.moveTo(muzzleX, muzzleY - 24);
+      ctx.lineTo(muzzleX + 9, muzzleY - 5);
+      ctx.lineTo(muzzleX + 4, muzzleY + 3);
+      ctx.lineTo(muzzleX - 4, muzzleY + 3);
+      ctx.lineTo(muzzleX - 9, muzzleY - 5);
+      ctx.closePath();
+      ctx.fill();
+      ctx.restore();
+    }
   }
 
   persistBest() { try { localStorage.setItem('portia-secret-shooter-best', String(this.best)); } catch {} }
