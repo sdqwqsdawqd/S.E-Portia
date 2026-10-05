@@ -20,6 +20,8 @@
   --hightlight-green: #3fbd68;
   --hightlight-orange-soft: rgba(231, 156, 63, 0.13);
   --hightlight-orange: #e89a3d;
+   --hightlight-purple-soft: rgba(147, 82, 190, 0.13);
+  --hightlight-purple: #9352be;
   --font-mono: 'IBM Plex Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace;
   --font-sans: 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
 }
@@ -657,6 +659,14 @@ body::before {
 .highlight-orange {
   background-color: var(--hightlight-orange-soft);
   color: var(--hightlight-orange);
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 3px;
+}
+
+.highlight-purple {
+  background-color: var(--hightlight-purple-soft);
+  color: var(--hightlight-purple);
   font-weight: 600;
   padding: 2px 8px;
   border-radius: 3px;
