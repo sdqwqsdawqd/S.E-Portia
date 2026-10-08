@@ -680,6 +680,73 @@ body::before {
   border-radius: 3px;
 }
 
+.tooltip {
+  position: relative;
+  display: inline-block;
+  cursor: help;
+}
+
+.tooltip-box {
+  position: absolute;
+
+  left: 50%;
+  bottom: calc(100% + 12px);
+  transform: translateX(-50%) translateY(5px);
+
+  width: 340px;
+  max-width: 80vw;
+
+  padding: 14px 16px;
+
+  background: rgba(20, 24, 24, 0.97);
+  color: #f4f4f4;
+
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+
+  font-size: 13px;
+  line-height: 1.55;
+
+  box-shadow:
+    0 8px 30px rgba(0, 0, 0, 0.25);
+
+  opacity: 0;
+  visibility: hidden;
+
+  pointer-events: none;
+
+  z-index: 9999;
+
+  transition:
+    opacity 0.18s ease,
+    transform 0.18s ease,
+    visibility 0.18s;
+}
+
+.tooltip-box-large {
+  width: 470px;
+}
+
+.tooltip:hover .tooltip-box {
+  opacity: 1;
+  visibility: visible;
+
+  transform: translateX(-50%) translateY(0);
+}
+
+.tooltip-box::after {
+  content: "";
+
+  position: absolute;
+  top: 100%;
+  left: 50%;
+
+  transform: translateX(-50%);
+
+  border: 7px solid transparent;
+  border-top-color: rgba(20, 24, 24, 0.97);
+}
+
 .rank-hrs {
   background-color: #e6cff2;
   color: var(--ink);
