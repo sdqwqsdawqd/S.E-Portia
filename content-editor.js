@@ -1,4 +1,38 @@
-import {mergeRanges,textNodes,offsetRange,domRange,wordAt,formatRanges,History} from './editor-core.mjs';
+import {mergeRanges,offsetRange,domRange,wordAt,formatRanges,History,normalizeMediaUrl,sanitizeHtml} from './editor-core.mjs';
+
+const COLOR_SWATCHES = ['#1c2422','#ffffff','#28c98b','#54b89a','#79d7be','#f3cf68','#f28c45','#df5757','#a879d7','#3979a8','#111713','#e9e4d9'];
+const STYLE_LABELS = {
+  'brand-green':'Portia · бирюзовый', 'green-title':'Зелёный заголовок',
+  'highlight-brand':'Выделение Portia', 'highlight-green':'Зелёное выделение',
+  'highlight-orange':'Оранжевое выделение', 'highlight-purple':'Фиолетовое выделение',
+  'highlight-red':'Красное выделение', 'rank-lrs':'Ранг LRS', 'rank-jmrs':'Ранг JMRS',
+  'rank-mrs':'Ранг MRS', 'rank-jhrs':'Ранг JHRS', 'rank-hrs':'Ранг HRS',
+  'rank-prfs':'Ранг PRFS', 'rank-ldrs':'Ранг LDRS', 'tooltip':'Подсказка',
+  'tooltip-box':'Окно подсказки', 'tooltip-box-large':'Большая подсказка',
+  'doc-link':'Ссылка на документ', 'qualification-list':'Список проверок',
+  'content-block':'Блок раздела', 'content-list':'Основной список', 'sub-list':'Вложенный список',
+  'block-title':'Заголовок блока', 'block-text':'Текст блока',
+  'leadership-grid':'Сетка руководства', 'leadership-card':'Карточка руководителя'
+};
+
+function escapeHtml(value) {
+  return String(value || '').replace(/[&<>"']/g, character => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[character]));
+}
+
+export async function compressImage(file, maxDimension = 1920, quality = 0.82) {
+  if (!file?.type?.startsWith('image/') || file.type === 'image/gif') return file;
+  const bitmap = await createImageBitmap(file);
+  const scale = Math.min(1, maxDimension / Math.max(bitmap.width, bitmap.height));
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.max(1, Math.round(bitmap.width * scale));
+  canvas.height = Math.max(1, Math.round(bitmap.height * scale));
+  canvas.getContext('2d', { alpha: false }).drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+  bitmap.close?.();
+  const blob = await new Promise((resolve, reject) => canvas.toBlob(value => value ? resolve(value) : reject(new Error('Не удалось сжать изображение.')), 'image/webp', quality));
+  if (blob.size >= file.size && scale === 1) return file;
+  const name = String(file.name || 'image').replace(/\.[^.]+$/, '') + '.webp';
+  return new File([blob], name, { type: 'image/webp', lastModified: Date.now() });
+}
 
 export async function mountEditor(api) {
   if (!api) return;
@@ -15,27 +49,15 @@ export async function mountEditor(api) {
         <button type="button" class="charter-editor-close" aria-label="Закрыть">×</button>
       </header>
       <nav class="charter-editor-tabs" aria-label="Разделы редактора"></nav>
-      <div class="charter-editor-toolbar" aria-label="Форматирование">
+      <div class="charter-editor-toolbar" aria-label="Основные действия">
         <div class="editor-tools-row">
           <button data-undo title="Ctrl+Z" aria-label="Отменить действие">↶ Отменить</button>
           <button data-redo title="Ctrl+Shift+Z / Ctrl+Y" aria-label="Повторить действие">↷ Повторить</button>
-          <span class="tool-divider"></span>
-          <button data-style="fontWeight" data-value="700" title="Ctrl+B"><b>Жирный</b></button>
-          <button data-style="fontStyle" data-value="italic"><i>Курсив</i></button>
-          <button data-style="textDecoration" data-value="underline"><u>Подчеркнуть</u></button>
-          <label>Жирность <select data-weight aria-label="Жирность текста"><option value="400">400 · обычная</option><option value="500">500 · средняя</option><option value="600">600 · полужирная</option><option value="700">700 · жирная</option><option value="900">900 · максимальная</option></select></label>
-          <button data-clear-format>Сбросить формат</button>
-        </div>
-        <div class="editor-tools-row">
-          <label>Текст <input type="color" data-color value="#1c2422" aria-label="Цвет текста"></label><button data-apply-color>Применить цвет</button>
-          <label>Фон <input type="color" data-background value="#fff0a6" aria-label="Цвет фона текста"></label><button data-apply-background>Применить фон</button><button data-no-background>Без фона</button>
-          <span class="tool-divider"></span>
-          <button data-command="insertUnorderedList">• Список</button><button data-command="insertOrderedList">1. Список</button>
-          <button data-link>Ссылка</button><button data-source aria-pressed="false">HTML</button>
+          <button data-source aria-pressed="false">HTML-код</button>
         </div>
         <div class="editor-selection-row">
-          <strong data-selection-count aria-live="polite">Выделите текст</strong>
-          <button data-add aria-pressed="false">+ Добавить выделение</button><button data-all>Весь раздел</button><button data-reset>Снять выделения</button>
+          <strong data-selection-count aria-live="polite">Выделите текст или нажмите Ctrl + ЛКМ</strong>
+          <button data-add aria-pressed="false">Добавить ещё</button><button data-all>Выбрать весь раздел</button><button data-reset>Снять выбор</button>
         </div>
       </div>
       <div class="editor-main">
@@ -43,21 +65,88 @@ export async function mountEditor(api) {
           <div class="charter-editor-canvas" contenteditable="true" role="textbox" aria-label="Содержимое раздела" aria-multiline="true" spellcheck="true"></div>
           <textarea class="charter-editor-source" aria-label="HTML раздела" spellcheck="false" hidden></textarea>
         </div>
-        <aside class="editor-style-panel">
-          <span class="charter-editor-kicker">СТИЛИ УСТАВА</span><h2>Готовое оформление</h2>
-          <p>Применяйте к выбранным фрагментам или меняйте все использования стиля.</p>
-          <label>Стиль<select data-preset aria-label="Стиль устава"></select></label>
-          <div class="editor-style-preview"><span data-preview>Пример текста</span></div>
-          <button data-preset-apply class="editor-primary">Применить к выделению</button>
-          <details><summary>Изменить стиль во всём уставе</summary>
-            <p>Изменятся все фрагменты с этим классом, включая другие разделы. Результат увидят все после сохранения.</p>
-            <label>Цвет текста<input type="color" data-preset-color aria-label="Цвет текста стиля"></label>
-            <label>Цвет фона<input type="color" data-preset-background aria-label="Цвет фона стиля"></label>
-            <label class="editor-checkbox"><input type="checkbox" data-preset-transparent>Прозрачный фон</label>
-            <label>Жирность<select data-preset-weight aria-label="Жирность стиля"><option>400</option><option>500</option><option>600</option><option>700</option><option>900</option></select></label>
-            <button data-preset-update>Обновить стиль везде</button>
-          </details>
-          <p class="editor-tip">Ctrl + Z — отмена<br>Ctrl + Shift + Z — повтор<br>Ctrl + S — сохранить<br>Фрагменты сохраняются при смене раздела.</p>
+        <aside class="editor-style-panel" aria-label="Инструменты редактора">
+          <nav class="editor-tool-tabs" aria-label="Группы инструментов">
+            <button class="active" data-tool-tab="text">Текст</button>
+            <button data-tool-tab="styles">Стили</button>
+            <button data-tool-tab="blocks">Блоки</button>
+            <button data-tool-tab="media">Медиа</button>
+          </nav>
+
+          <section class="editor-tool-panel active" data-tool-panel="text">
+            <h2>Оформление текста</h2>
+            <p>Сначала выделите текст. Ctrl + ЛКМ добавляет ещё один фрагмент.</p>
+            <div class="editor-button-grid">
+              <button data-style="fontWeight" data-value="700" title="Ctrl+B"><b>Жирный</b></button>
+              <button data-style="fontStyle" data-value="italic"><i>Курсив</i></button>
+              <button data-style="textDecoration" data-value="underline"><u>Подчёркнутый</u></button>
+              <button data-clear-format>Сбросить</button>
+            </div>
+            <label>Жирность<select data-weight aria-label="Жирность текста"><option value="400">Обычная</option><option value="500">Средняя</option><option value="600">Полужирная</option><option value="700">Жирная</option><option value="900">Максимальная</option></select></label>
+            <div class="editor-color-card">
+              <strong>Цвет текста</strong>
+              <div class="editor-color-line"><input type="color" data-color value="#1c2422" aria-label="Цвет текста"><input data-custom-hex="color" value="#1c2422" maxlength="7" aria-label="HEX цвета текста"></div>
+              <div class="editor-swatches" data-swatches="color"></div>
+              <button data-apply-color class="editor-primary">Применить цвет</button>
+            </div>
+            <div class="editor-color-card">
+              <strong>Цвет фона</strong>
+              <div class="editor-color-line"><input type="color" data-background value="#fff0a6" aria-label="Цвет фона текста"><input data-custom-hex="background" value="#fff0a6" maxlength="7" aria-label="HEX цвета фона"></div>
+              <div class="editor-swatches" data-swatches="background"></div>
+              <button data-apply-background class="editor-primary">Применить фон</button><button data-no-background>Убрать фон</button>
+            </div>
+            <div class="editor-button-grid"><button data-command="insertUnorderedList">Маркированный список</button><button data-command="insertOrderedList">Нумерованный список</button><button data-link>Добавить ссылку</button></div>
+          </section>
+
+          <section class="editor-tool-panel" data-tool-panel="styles" hidden>
+            <h2>Стили Portia</h2>
+            <p>Здесь находятся все стили исходного устава, включая бирюзовый Portia и ранги.</p>
+            <label>Готовый стиль<select data-preset aria-label="Стиль устава"></select></label>
+            <div class="editor-style-preview"><span data-preview>Пример текста</span></div>
+            <button data-preset-apply class="editor-primary">Применить к выделению</button>
+            <details><summary>Изменить этот стиль во всём уставе</summary>
+              <p>Новые цвета применятся ко всем фрагментам с выбранным классом после сохранения.</p>
+              <label>Цвет текста<input type="color" data-preset-color aria-label="Цвет текста стиля"></label>
+              <label>Цвет фона<input type="color" data-preset-background aria-label="Цвет фона стиля"></label>
+              <label class="editor-checkbox"><input type="checkbox" data-preset-transparent>Прозрачный фон</label>
+              <label>Жирность<select data-preset-weight aria-label="Жирность стиля"><option>400</option><option>500</option><option>600</option><option>700</option><option>900</option></select></label>
+              <button data-preset-update>Обновить стиль везде</button>
+            </details>
+          </section>
+
+          <section class="editor-tool-panel" data-tool-panel="blocks" hidden>
+            <h2>Добавить блок</h2>
+            <p>Новый блок появится в конце открытого раздела. После этого текст можно изменить прямо на странице.</p>
+            <div class="editor-block-list">
+              <button data-insert-block="title"><strong>Заголовок</strong><span>Как «Что такое проверки»</span></button>
+              <button data-insert-block="paragraph"><strong>Обычный текст</strong><span>Абзац в стиле устава</span></button>
+              <button data-insert-block="bullets"><strong>Список</strong><span>Маркированные пункты</span></button>
+              <button data-insert-block="numbered"><strong>Нумерованный список</strong><span>Последовательность действий</span></button>
+              <button data-insert-block="notice"><strong>Важное примечание</strong><span>Выделенный цветом блок</span></button>
+              <button data-insert-block="divider"><strong>Разделитель</strong><span>Отделяет смысловые части</span></button>
+            </div>
+          </section>
+
+          <section class="editor-tool-panel" data-tool-panel="media" hidden>
+            <h2>Фото и видео</h2>
+            <p>Фото автоматически уменьшается и сохраняется в WebP. Ссылки YouTube, Vimeo и Rutube превращаются в видео.</p>
+            <div class="editor-media-card">
+              <strong>Добавить изображение</strong>
+              <label>Файл<input type="file" data-image-file accept="image/jpeg,image/png,image/webp,image/gif"></label>
+              <label>Описание<input type="text" data-image-alt placeholder="Что изображено на фото"></label>
+              <label>Подпись<input type="text" data-image-caption placeholder="Необязательно"></label>
+              <button data-add-image class="editor-primary">Добавить изображение</button>
+            </div>
+            <div class="editor-media-card">
+              <strong>Добавить видео или ссылку</strong>
+              <label>Ссылка<input type="url" data-media-url placeholder="https://youtube.com/watch?v=…"></label>
+              <label>Подпись<input type="text" data-media-caption placeholder="Необязательно"></label>
+              <button data-add-media class="editor-primary">Добавить видео или ссылку</button>
+            </div>
+            <p class="editor-upload-status" data-upload-status role="status"></p>
+          </section>
+
+          <p class="editor-tip">Ctrl + Z — отмена<br>Ctrl + Shift + Z — повтор<br>Ctrl + S — сохранить</p>
         </aside>
       </div>
       <footer class="charter-editor-footer">
@@ -69,11 +158,26 @@ export async function mountEditor(api) {
   const $ = selector => dialog.querySelector(selector);
   const canvas=$('.charter-editor-canvas'), source=$('.charter-editor-source');
   const tabs=$('.charter-editor-tabs'), status=$('.charter-editor-status'), saveButton=$('[data-save]');
+  dialog.querySelectorAll('[data-tool-tab]').forEach(button=>button.addEventListener('click',()=>{
+    dialog.querySelectorAll('[data-tool-tab]').forEach(item=>item.classList.toggle('active',item===button));
+    dialog.querySelectorAll('[data-tool-panel]').forEach(panel=>{
+      const active=panel.dataset.toolPanel===button.dataset.toolTab;
+      panel.hidden=!active;panel.classList.toggle('active',active);
+    });
+  }));
+  function validHex(value,fallback) { return /^#[0-9a-f]{6}$/i.test(String(value||'').trim()) ? value.trim() : fallback; }
+  function wireColor(kind,pickerSelector) {
+    const picker=$(pickerSelector), hex=$(`[data-custom-hex="${kind}"]`), swatches=$(`[data-swatches="${kind}"]`);
+    picker.addEventListener('input',()=>{hex.value=picker.value;});
+    hex.addEventListener('change',()=>{hex.value=validHex(hex.value,picker.value);picker.value=hex.value;});
+    for(const color of COLOR_SWATCHES){const button=document.createElement('button');button.type='button';button.className='editor-swatch';button.style.backgroundColor=color;button.title=color;button.setAttribute('aria-label',`Выбрать ${color}`);button.onclick=()=>{picker.value=color;hex.value=color;};swatches.append(button);}
+  }
+  wireColor('color','[data-color]');wireColor('background','[data-background]');
   const theme = () => {try {return JSON.parse(state.content.__styles || '{}');} catch {return {};}};
   function canonicalContent(content) {
     return Object.fromEntries(Object.entries(content).map(([key,value])=>{
       if(key==='__styles')return [key,value];
-      const holder=document.createElement('div');holder.innerHTML=value;return [key,holder.innerHTML];
+      return [key,sanitizeHtml(value,document)];
     }));
   }
   const setStatus=(text,kind='')=>{status.textContent=text;status.dataset.kind=kind;};
@@ -194,8 +298,59 @@ export async function mountEditor(api) {
     canvas.hidden=state.sourceMode;source.hidden=!state.sourceMode;
     $('[data-source]').setAttribute('aria-pressed',String(state.sourceMode));render();
   };
+  function appendBlock(html,message) {
+    if(state.sourceMode || state.saving)return;
+    checkpoint();
+    canvas.insertAdjacentHTML('beforeend',sanitizeHtml(html,document));
+    source.value=canvas.innerHTML;recordChange();
+    canvas.lastElementChild?.scrollIntoView({behavior:'smooth',block:'center'});
+    setStatus(message,'dirty');
+  }
+  const blockTemplates={
+    title:'<div class="content-block"><h2 class="block-title">Новый заголовок</h2><div class="block-text">Введите текст блока…</div></div>',
+    paragraph:'<div class="content-block"><div class="block-text">Новый текст…</div></div>',
+    bullets:'<div class="content-block"><ul class="content-list"><li>Первый пункт</li><li>Второй пункт</li></ul></div>',
+    numbered:'<div class="content-block"><ol class="content-list"><li>Первый шаг</li><li>Второй шаг</li></ol></div>',
+    notice:'<div class="content-block"><div class="block-text"><span class="highlight-brand"><strong>Важно:</strong> напишите примечание…</span></div></div>',
+    divider:'<hr class="portia-divider">'
+  };
+  dialog.querySelectorAll('[data-insert-block]').forEach(button=>button.onclick=()=>appendBlock(blockTemplates[button.dataset.insertBlock],'Блок добавлен. Измените его текст и сохраните устав.'));
+
+  async function addImage() {
+    const file=$('[data-image-file]').files?.[0];
+    if(!file){setStatus('Выберите изображение.','warning');return;}
+    if(file.size>25*1024*1024){setStatus('Исходный файл должен быть меньше 25 МБ.','error');return;}
+    const uploadStatus=$('[data-upload-status]'),button=$('[data-add-image]');button.disabled=true;
+    try{
+      uploadStatus.textContent='Сжимаем изображение…';
+      const optimized=await compressImage(file);
+      uploadStatus.textContent=`Загружаем ${Math.max(1,Math.round(optimized.size/1024))} КБ…`;
+      const uploaded=await window.PortiaMedia.upload(optimized);
+      const alt=escapeHtml($('[data-image-alt]').value||'Изображение Portia');
+      const caption=escapeHtml($('[data-image-caption]').value);
+      appendBlock(`<figure class="portia-media portia-media--image"><img src="${escapeHtml(uploaded.url)}" alt="${alt}" loading="lazy">${caption?`<figcaption>${caption}</figcaption>`:''}</figure>`,'Изображение добавлено. Нажмите «Сохранить всё».');
+      $('[data-image-file]').value='';$('[data-image-alt]').value='';$('[data-image-caption]').value='';uploadStatus.textContent='Изображение готово.';
+    }catch(error){uploadStatus.textContent='';setStatus(error.message||'Не удалось добавить изображение.','error');}
+    finally{button.disabled=false;}
+  }
+  $('[data-add-image]').onclick=addImage;
+
+  function addMediaUrl() {
+    const value=$('[data-media-url]').value.trim();
+    const media=normalizeMediaUrl(value);
+    if(!media){setStatus('Введите безопасную ссылку, начинающуюся с https://','error');return;}
+    const caption=escapeHtml($('[data-media-caption]').value);
+    let body='';
+    if(media.kind==='embed')body=`<iframe src="${escapeHtml(media.url)}" title="${caption||'Видео Portia'}" loading="lazy" allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture" allowfullscreen referrerpolicy="strict-origin-when-cross-origin"></iframe>`;
+    else if(media.kind==='video')body=`<video src="${escapeHtml(media.url)}" controls preload="metadata"></video>`;
+    else if(media.kind==='image')body=`<img src="${escapeHtml(media.url)}" alt="${caption||'Изображение Portia'}" loading="lazy">`;
+    else body=`<a class="doc-link" href="${escapeHtml(media.url)}" target="_blank" rel="noopener noreferrer">${caption||'Открыть медиаматериал'}</a>`;
+    appendBlock(`<figure class="portia-media portia-media--${media.kind}">${body}${caption&&media.kind!=='link'?`<figcaption>${caption}</figcaption>`:''}</figure>`,'Медиаблок добавлен. Нажмите «Сохранить всё».');
+    $('[data-media-url]').value='';$('[data-media-caption]').value='';
+  }
+  $('[data-add-media]').onclick=addMediaUrl;
   const preset=$('[data-preset]');
-  for(const name of window.PortiaTheme.names){const option=document.createElement('option');option.value=name;option.textContent=name;preset.append(option);}
+  for(const name of window.PortiaTheme.names){const option=document.createElement('option');option.value=name;option.textContent=STYLE_LABELS[name]||name;preset.append(option);}
   function rgbHex(color) {
     if(/^#[\da-f]{6}$/i.test(color))return color;
     const values=color.match(/[\d.]+/g);
@@ -235,21 +390,21 @@ export async function mountEditor(api) {
     if(state.saving)return;
     if(state.dirty && !confirm('Заменить несохранённые изменения актуальной версией из базы?'))return;
     try {
-      const data=await window.PortiaSupabase.loadCharter();
+      const data=await window.PortiaSupabase.loadCharter(await api.getBaselineContent());
       if(!data)throw Error('Не удалось загрузить устав. Ваши правки сохранены в редакторе.');
       await adopt(data);await api.applyStoredState(data);
     }catch(error){setStatus(error.message,'error');}
   }
   async function save() {
     checkpoint();if(!state.dirty || state.saving)return;
-    const payload=structuredClone(state.content);
+    const payload=canonicalContent(structuredClone(state.content));
     state.saving=true;saveButton.disabled=true;
     canvas.contentEditable='false';source.disabled=true;
     dialog.querySelectorAll('.charter-editor-toolbar button,.charter-editor-toolbar input,.charter-editor-toolbar select,.editor-style-panel button,.editor-style-panel input,.editor-style-panel select').forEach(el=>el.disabled=true);
     setStatus('Сохраняем…');
     try {
       const data=await window.PortiaSupabase.saveCharter(payload,state.revision);
-      state.revision=data.revision;saved=JSON.stringify(payload);state.dirty=JSON.stringify(state.content)!==saved;
+      state.content=payload;state.revision=data.revision;saved=JSON.stringify(payload);state.dirty=false;
       await api.applyStoredState(data);stamp(data.updatedAt);setStatus('Сохранено. Изменения доступны всем посетителям.','saved');
     }catch(error){setStatus(error.message,'error');}
     finally {

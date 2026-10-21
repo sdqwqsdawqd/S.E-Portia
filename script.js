@@ -17,6 +17,10 @@ const SECTION_FILES = {
 };
 
 const sectionCache = {};
+const baselineCache = {};
+let charterRevision = 0;
+let charterUpdatedAt = null;
+let charterStyles = '{}';
 let currentIndex = -1;
 let navigationRevision = 0;
 let idleWebTimer = null;
@@ -118,18 +122,25 @@ function scheduleIdleWeb(targetId) {
   }, IDLE_WEB_DELAY);
 }
 
-async function loadSection(targetId) {
+async function loadBaselineSection(targetId) {
   if (typeof SECTION_HTML !== 'undefined' && SECTION_HTML[targetId] !== undefined) {
-    return SECTION_HTML[targetId];
+    baselineCache[targetId] = SECTION_HTML[targetId];
+    return baselineCache[targetId];
   }
-
-  if (sectionCache[targetId]) return sectionCache[targetId];
+  if (baselineCache[targetId]) return baselineCache[targetId];
 
   const fileId = SECTION_FILES[targetId] || targetId;
   const response = await fetch(`sections/${fileId}.html`);
   if (!response.ok) throw new Error(`Не удалось загрузить ${targetId}`);
 
   const html = await response.text();
+  baselineCache[targetId] = html;
+  return html;
+}
+
+async function loadSection(targetId) {
+  if (sectionCache[targetId]) return sectionCache[targetId];
+  const html = await loadBaselineSection(targetId);
   sectionCache[targetId] = html;
   return html;
 }
@@ -808,9 +819,57 @@ function initNavigation() {
   });
 }
 
-document.addEventListener('DOMContentLoaded', () => {
+async function getBaselineContent() {
+  return Object.fromEntries(await Promise.all(SECTIONS.map(async ({ id }) => [id, await loadBaselineSection(id)])));
+}
+
+async function applyStoredState(data) {
+  if (!data?.content) return;
+  for (const { id } of SECTIONS) {
+    if (typeof data.content[id] === 'string' && data.content[id].trim()) sectionCache[id] = data.content[id];
+  }
+  charterStyles = typeof data.content.__styles === 'string' ? data.content.__styles : charterStyles;
+  charterRevision = Number(data.revision || charterRevision || 0);
+  charterUpdatedAt = data.updatedAt || charterUpdatedAt;
+  window.PortiaTheme?.apply(charterStyles);
+
+  const activeId = SECTIONS[currentIndex]?.id;
+  if (activeId && !secretGame) {
+    currentIndex = -1;
+    await switchPage(activeId);
+  }
+}
+
+window.PortiaCharter = {
+  sections: SECTIONS,
+  getSection: loadSection,
+  getBaselineContent,
+  applyStoredState,
+  getStyles: () => charterStyles,
+  getRevision: () => charterRevision,
+  getUpdatedAt: () => charterUpdatedAt,
+};
+
+async function initializeCharter() {
+  const baseline = await getBaselineContent();
+  Object.assign(sectionCache, baseline);
+  if (!window.PortiaSupabase) return;
+  try {
+    const data = await window.PortiaSupabase.loadCharter(baseline);
+    if (data) await applyStoredState(data);
+    window.PortiaSupabase.subscribe((next) => {
+      applyStoredState(next).catch(console.error);
+      window.dispatchEvent(new CustomEvent('charter-update', { detail: next }));
+    });
+  } catch (error) {
+    console.warn('Supabase недоступен, показана встроенная версия устава.', error);
+  }
+}
+
+document.addEventListener('DOMContentLoaded', async () => {
   initNavigation();
   addButtonWebs();
   initSpiderWalkers();
-  switchPage('page1');
+  await initializeCharter();
+  await switchPage('page1');
 });

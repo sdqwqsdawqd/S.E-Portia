@@ -4,8 +4,8 @@
   if (!session?.isOwner) return;
   const css = document.createElement('link');
   css.rel = 'stylesheet';
-  css.href = 'content-editor.css?v=3';
+  css.href = 'content-editor.css?v=4';
   document.head.append(css);
-  const { mountEditor } = await import('./content-editor.js?v=3');
+  const { mountEditor } = await import('./content-editor.js?v=4');
   await mountEditor(window.PortiaCharter);
 })().catch((error) => console.error('Editor boot failed', error));

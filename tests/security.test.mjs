@@ -70,3 +70,42 @@ test('database migrations preserve revisions and restrict media writes to the ow
   assert.match(sql, /insert into storage\.buckets.*portia-media/is);
   assert.match(sql, /storage\.objects.*qloxzick@gmail\.com/is);
 });
+
+test('owner editor loads lazily after Supabase while anonymous markup stays clean', async () => {
+  const html = await read('index.html');
+  const supabase = html.indexOf('supabase-data.js');
+  const reader = html.indexOf('script.js');
+  const editor = html.indexOf('editor-boot.js');
+
+  assert.ok(supabase > 0 && reader > supabase && editor > reader);
+  assert.doesNotMatch(html, /content-editor\.css/);
+  assert.doesNotMatch(html, /Редактировать устав/);
+});
+
+test('editor exposes clear Text, Styles, Blocks and Media work areas', async () => {
+  const source = await read('content-editor.js');
+  for (const label of ['Текст', 'Стили', 'Блоки', 'Медиа']) {
+    assert.match(source, new RegExp(`>${label}<`));
+  }
+  assert.match(source, /Добавить изображение/);
+  assert.match(source, /Добавить видео или ссылку/);
+  assert.match(source, /compressImage/);
+  assert.match(source, /data-custom-hex/);
+});
+
+test('style registry includes every incumbent charter class', async () => {
+  const source = await read('charter-theme.js');
+  const css = await read('styles.css');
+  const requiredClasses = [
+    'brand-green', 'green-title', 'highlight-brand', 'highlight-green',
+    'highlight-orange', 'highlight-purple', 'highlight-red', 'rank-lrs',
+    'rank-jmrs', 'rank-mrs', 'rank-jhrs', 'rank-hrs', 'rank-prfs',
+    'rank-ldrs', 'tooltip', 'tooltip-box', 'tooltip-box-large', 'doc-link',
+    'qualification-list', 'content-block', 'content-list', 'sub-list',
+    'block-title', 'block-text', 'leadership-grid', 'leadership-card'
+  ];
+  for (const className of requiredClasses) {
+    assert.match(css, new RegExp(`\\.${className}(?:[\\s,{.:#>]|$)`));
+    assert.match(source, new RegExp(`['\"]${className}['\"]`), `editor missing ${className}`);
+  }
+});
