@@ -69,6 +69,8 @@ test('database migrations preserve revisions and restrict media writes to the ow
   assert.match(sql, /insert into public\.charter_revisions/i);
   assert.match(sql, /insert into storage\.buckets.*portia-media/is);
   assert.match(sql, /storage\.objects.*qloxzick@gmail\.com/is);
+  assert.match(sql, /revoke update on public\.charter_state from authenticated/i);
+  assert.match(sql, /security definer/i);
 });
 
 test('owner editor loads lazily after Supabase while anonymous markup stays clean', async () => {
@@ -89,8 +91,19 @@ test('editor exposes clear Text, Styles, Blocks and Media work areas', async () 
   }
   assert.match(source, /Добавить изображение/);
   assert.match(source, /Добавить видео или ссылку/);
+  assert.match(source, /data-video-file/);
+  assert.match(source, /data-media-width/);
+  assert.match(source, /data-remove-media/);
   assert.match(source, /compressImage/);
   assert.match(source, /data-custom-hex/);
+  assert.match(source, /BlockSelection/);
+  assert.match(source, /sanitizeHtml\(state\.content\[state\.active\]/);
+});
+
+test('reader renders the first section before remote initialization completes', async () => {
+  const source = await read('script.js');
+  assert.match(source, /await switchPage\('page1'\);\s*initializeCharter\(\)\.catch/);
+  assert.match(source, /Promise\.allSettled/);
 });
 
 test('style registry includes every incumbent charter class', async () => {

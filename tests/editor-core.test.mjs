@@ -67,3 +67,16 @@ test('sanitizer removes executable markup while preserving ordinary formatting',
   assert.match(clean, /background-color:\s*#123456/i);
   assert.doesNotMatch(clean, /script|iframe|onclick|javascript:|position\s*:/i);
 });
+
+test('sanitizer helpers preserve incumbent local media and layout styles', () => {
+  assert.equal(core.isSafeResourceUrl('Postroenie.jpg'), true);
+  assert.equal(core.isSafeResourceUrl('Плац.png'), true);
+  assert.equal(core.isSafeResourceUrl('pfp/Kotik_play1232.jpg'), true);
+  assert.equal(core.isSafeResourceUrl('javascript:alert(1)'), false);
+  assert.equal(core.isSafeResourceUrl('data:text/html,<script>alert(1)</script>'), false);
+
+  assert.equal(
+    core.sanitizeInlineStyle('border: 1px solid black; max-width: 85%; height: auto; background-image: url(javascript:alert(1))'),
+    'border:1px solid black;max-width:85%;height:auto',
+  );
+});

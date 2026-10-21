@@ -9,8 +9,9 @@ create table if not exists public.charter_revisions (
 );
 
 alter table public.charter_revisions enable row level security;
-grant select, insert on public.charter_revisions to authenticated;
-grant usage, select on sequence public.charter_revisions_id_seq to authenticated;
+grant select on public.charter_revisions to authenticated;
+revoke insert, update, delete on public.charter_revisions from authenticated;
+revoke all on sequence public.charter_revisions_id_seq from authenticated;
 revoke all on public.charter_revisions from anon;
 
 drop policy if exists "charter_revision_owner_read" on public.charter_revisions;
@@ -80,7 +81,7 @@ create or replace function public.update_charter(
   p_content jsonb
 ) returns public.charter_state
 language plpgsql
-security invoker
+security definer
 set search_path = public, pg_temp
 as $$
 declare
@@ -115,3 +116,9 @@ begin
   return v_row;
 end;
 $$;
+
+-- All writes must pass through update_charter so no client can skip the
+-- revision snapshot or optimistic-concurrency check with a direct REST update.
+revoke update on public.charter_state from authenticated;
+revoke all on function public.update_charter(bigint, jsonb) from public, anon;
+grant execute on function public.update_charter(bigint, jsonb) to authenticated;

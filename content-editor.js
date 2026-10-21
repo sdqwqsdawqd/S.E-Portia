@@ -1,4 +1,4 @@
-import {mergeRanges,offsetRange,domRange,wordAt,formatRanges,History,normalizeMediaUrl,sanitizeHtml} from './editor-core.mjs';
+import {mergeRanges,offsetRange,domRange,formatRanges,History,BlockSelection,normalizeMediaUrl,sanitizeHtml} from './editor-core.mjs';
 
 const COLOR_SWATCHES = ['#1c2422','#ffffff','#28c98b','#54b89a','#79d7be','#f3cf68','#f28c45','#df5757','#a879d7','#3979a8','#111713','#e9e4d9'];
 const STYLE_LABELS = {
@@ -26,7 +26,7 @@ export async function compressImage(file, maxDimension = 1920, quality = 0.82) {
   const canvas = document.createElement('canvas');
   canvas.width = Math.max(1, Math.round(bitmap.width * scale));
   canvas.height = Math.max(1, Math.round(bitmap.height * scale));
-  canvas.getContext('2d', { alpha: false }).drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+  canvas.getContext('2d', { alpha: true }).drawImage(bitmap, 0, 0, canvas.width, canvas.height);
   bitmap.close?.();
   const blob = await new Promise((resolve, reject) => canvas.toBlob(value => value ? resolve(value) : reject(new Error('Не удалось сжать изображение.')), 'image/webp', quality));
   if (blob.size >= file.size && scale === 1) return file;
@@ -37,15 +37,17 @@ export async function compressImage(file, maxDimension = 1920, quality = 0.82) {
 export async function mountEditor(api) {
   if (!api) return;
   const history = new History();
+  const blockSelection = new BlockSelection();
   const state = {content:{}, revision:0, active:'page1', dirty:false, saving:false, sourceMode:false, ranges:{}, addNext:false};
-  let saved = '', inputTimer, gesture = null, composing = false;
+  let saved = '', inputTimer, gesture = null, composing = false, selectedMedia = null, nextBlockId = 1;
+  const blockIds = new WeakMap();
   const dialog = document.createElement('dialog');
   dialog.className='charter-editor-dialog';
   dialog.setAttribute('aria-labelledby','editor-title');
   dialog.innerHTML=`
     <div class="charter-editor-shell">
       <header class="charter-editor-header">
-        <div><span class="charter-editor-kicker">PORTIA / УПРАВЛЕНИЕ СОДЕРЖИМЫМ</span><h1 id="editor-title">Редактор устава</h1><p>Выделяйте текст. Удерживайте Ctrl, чтобы добавлять фрагменты, или Ctrl + ЛКМ — для выбора слова.</p></div>
+        <div><span class="charter-editor-kicker">PORTIA / УПРАВЛЕНИЕ СОДЕРЖИМЫМ</span><h1 id="editor-title">Редактор устава</h1><p>Выделяйте текст. Ctrl + ЛКМ выбирает или снимает целую строку/блок; Ctrl + перетаскивание добавляет фрагмент.</p></div>
         <button type="button" class="charter-editor-close" aria-label="Закрыть">×</button>
       </header>
       <nav class="charter-editor-tabs" aria-label="Разделы редактора"></nav>
@@ -143,6 +145,19 @@ export async function mountEditor(api) {
               <label>Подпись<input type="text" data-media-caption placeholder="Необязательно"></label>
               <button data-add-media class="editor-primary">Добавить видео или ссылку</button>
             </div>
+            <div class="editor-media-card">
+              <strong>Загрузить видеофайл</strong>
+              <label>MP4 или WebM<input type="file" data-video-file accept="video/mp4,video/webm"></label>
+              <label>Подпись<input type="text" data-video-caption placeholder="Необязательно"></label>
+              <button data-add-video class="editor-primary">Загрузить видео</button>
+            </div>
+            <div class="editor-media-card">
+              <strong>Изменить выбранное медиа</strong>
+              <p data-selected-media>Нажмите на фото или видео в тексте.</p>
+              <label>Ширина<select data-media-width><option value="100">100%</option><option value="75">75%</option><option value="50">50%</option></select></label>
+              <label>Выравнивание<select data-media-align><option value="center">По центру</option><option value="left">Слева</option><option value="right">Справа</option></select></label>
+              <div class="editor-button-grid"><button data-apply-media>Применить размер</button><button data-replace-media>Заменить ссылкой выше</button><button data-remove-media>Удалить</button></div>
+            </div>
             <p class="editor-upload-status" data-upload-status role="status"></p>
           </section>
 
@@ -195,13 +210,16 @@ export async function mountEditor(api) {
   function checkpoint() { clearTimeout(inputTimer);commit();history.push(snapshot());updateDirty(); }
   function recordChange() {commit();history.push(snapshot());updateDirty();}
   function render() {
-    canvas.innerHTML=state.content[state.active] || '';
-    source.value=state.content[state.active] || '';
+    const safe=sanitizeHtml(state.content[state.active] || '',document);
+    state.content[state.active]=safe;
+    canvas.innerHTML=safe;
+    source.value=safe;
+    selectedMedia=null;blockSelection.clear();
     tabs.querySelectorAll('button').forEach(b=>{b.classList.toggle('active',b.dataset.section===state.active);b.setAttribute('aria-current',b.dataset.section===state.active?'page':'false');});
     draftTheme(); paintSelections();
   }
   function showSection(id) {checkpoint();state.active=id;render();}
-  function clearSelections() { state.ranges={}; window.getSelection()?.removeAllRanges(); paintSelections(); }
+  function clearSelections() { state.ranges={};blockSelection.clear();window.getSelection()?.removeAllRanges();paintSelections(); }
   function paintSelections() {
     const ranges=state.ranges[state.active] || [];
     if (window.CSS?.highlights && window.Highlight) {
@@ -223,12 +241,27 @@ export async function mountEditor(api) {
     state.ranges[state.active]=mergeRanges([...(state.ranges[state.active]||[]),range]);
     paintSelections(); return true;
   }
+  const blockElements=new Map();
+  const blockSelector='li, .block-title, .block-text, .leader-details, .leader-photo, .portia-media, p';
+  function blockId(element) {
+    if(!blockIds.has(element))blockIds.set(element,`block-${nextBlockId++}`);
+    const id=blockIds.get(element);blockElements.set(id,element);return id;
+  }
+  function captureBlock(element) {
+    const range=document.createRange();range.selectNodeContents(element);
+    return offsetRange(canvas,range);
+  }
+  function toggleBlock(element) {
+    blockSelection.toggle(blockId(element),true);
+    state.ranges[state.active]=mergeRanges(blockSelection.values().map(id=>captureBlock(blockElements.get(id))).filter(Boolean));
+    paintSelections();
+  }
   canvas.addEventListener('pointerdown',event=>{
     if (event.button!==0) return;
     checkpoint();
     const additive=event.ctrlKey || event.metaKey || state.addNext;
-    if (additive) capture(true);
-    else state.ranges={};
+    if (additive && !window.getSelection()?.isCollapsed) capture(true);
+    else if(!additive){state.ranges={};blockSelection.clear();}
     gesture={additive,x:event.clientX,y:event.clientY};
   });
   document.addEventListener('pointerup',event=>{
@@ -236,10 +269,8 @@ export async function mountEditor(api) {
     const {additive,x,y}=gesture;gesture=null;
     const clicked=Math.hypot(event.clientX-x,event.clientY-y)<5;
     if (additive && clicked && canvas.contains(event.target)) {
-      const point=document.caretPositionFromPoint?.(event.clientX,event.clientY);
-      const fallback=!point && document.caretRangeFromPoint?.(event.clientX,event.clientY);
-      const word=wordAt(canvas,point?.offsetNode || fallback?.startContainer,point?.offset ?? fallback?.startOffset ?? 0);
-      if(word) state.ranges[state.active]=mergeRanges([...(state.ranges[state.active]||[]),word]);
+      const block=event.target.closest?.(blockSelector);
+      if(block && canvas.contains(block))toggleBlock(block);
     } else capture(additive);
     state.addNext=false; paintSelections();
   });
@@ -251,7 +282,15 @@ export async function mountEditor(api) {
   canvas.addEventListener('beforeinput',event=>{
     if(event.inputType==='historyUndo' || event.inputType==='historyRedo'){event.preventDefault();travel(event.inputType==='historyUndo'?'undo':'redo');}
   });
-  canvas.addEventListener('click',event=>{if(event.target.closest('a'))event.preventDefault();});
+  canvas.addEventListener('click',event=>{
+    if(event.target.closest('a'))event.preventDefault();
+    const media=event.target.closest('.portia-media, img, video, iframe');
+    if(media && canvas.contains(media)){
+      selectedMedia=media;
+      $('[data-selected-media]').textContent='Выбрано: '+(media.querySelector?.('figcaption')?.textContent || media.getAttribute?.('alt') || media.tagName.toLowerCase());
+      setStatus('Медиа выбрано. Размер, выравнивание, замену и удаление можно изменить справа.');
+    }
+  });
   // Keep native text selection while pressing toolbar buttons.
   dialog.querySelectorAll('button').forEach(button=>button.addEventListener('mousedown',event=>event.preventDefault()));
   $('[data-add]').onclick=()=>{capture(true);state.addNext=true;paintSelections();setStatus('Выделите следующий фрагмент — он добавится к выбранным.');};
@@ -335,20 +374,58 @@ export async function mountEditor(api) {
   }
   $('[data-add-image]').onclick=addImage;
 
+  function mediaFigureHtml(media,caption='') {
+    const safeCaption=escapeHtml(caption);
+    let body='';
+    if(media.kind==='embed')body=`<iframe src="${escapeHtml(media.url)}" title="${safeCaption||'Видео Portia'}" loading="lazy" allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture" allowfullscreen referrerpolicy="strict-origin-when-cross-origin"></iframe>`;
+    else if(media.kind==='video')body=`<video src="${escapeHtml(media.url)}" controls preload="metadata"></video>`;
+    else if(media.kind==='image')body=`<img src="${escapeHtml(media.url)}" alt="${safeCaption||'Изображение Portia'}" loading="lazy">`;
+    else body=`<a class="doc-link" href="${escapeHtml(media.url)}" target="_blank" rel="noopener noreferrer">${safeCaption||'Открыть медиаматериал'}</a>`;
+    return `<figure class="portia-media portia-media--${media.kind}">${body}${safeCaption&&media.kind!=='link'?`<figcaption>${safeCaption}</figcaption>`:''}</figure>`;
+  }
+
   function addMediaUrl() {
     const value=$('[data-media-url]').value.trim();
     const media=normalizeMediaUrl(value);
     if(!media){setStatus('Введите безопасную ссылку, начинающуюся с https://','error');return;}
-    const caption=escapeHtml($('[data-media-caption]').value);
-    let body='';
-    if(media.kind==='embed')body=`<iframe src="${escapeHtml(media.url)}" title="${caption||'Видео Portia'}" loading="lazy" allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture" allowfullscreen referrerpolicy="strict-origin-when-cross-origin"></iframe>`;
-    else if(media.kind==='video')body=`<video src="${escapeHtml(media.url)}" controls preload="metadata"></video>`;
-    else if(media.kind==='image')body=`<img src="${escapeHtml(media.url)}" alt="${caption||'Изображение Portia'}" loading="lazy">`;
-    else body=`<a class="doc-link" href="${escapeHtml(media.url)}" target="_blank" rel="noopener noreferrer">${caption||'Открыть медиаматериал'}</a>`;
-    appendBlock(`<figure class="portia-media portia-media--${media.kind}">${body}${caption&&media.kind!=='link'?`<figcaption>${caption}</figcaption>`:''}</figure>`,'Медиаблок добавлен. Нажмите «Сохранить всё».');
+    const caption=$('[data-media-caption]').value;
+    appendBlock(mediaFigureHtml(media,caption),'Медиаблок добавлен. Нажмите «Сохранить всё».');
     $('[data-media-url]').value='';$('[data-media-caption]').value='';
   }
   $('[data-add-media]').onclick=addMediaUrl;
+  async function addVideoFile() {
+    const file=$('[data-video-file]').files?.[0];
+    if(!file){setStatus('Выберите MP4 или WebM видео.','warning');return;}
+    if(!['video/mp4','video/webm'].includes(file.type)){setStatus('Поддерживаются только MP4 и WebM.','error');return;}
+    if(file.size>50*1024*1024){setStatus('Видеофайл должен быть меньше 50 МБ.','error');return;}
+    const button=$('[data-add-video]'),uploadStatus=$('[data-upload-status]');button.disabled=true;
+    try{
+      uploadStatus.textContent=`Загружаем видео ${Math.max(1,Math.round(file.size/1024/1024))} МБ…`;
+      const uploaded=await window.PortiaMedia.upload(file);
+      appendBlock(mediaFigureHtml({kind:'video',url:uploaded.url},$('[data-video-caption]').value),'Видео добавлено. Нажмите «Сохранить всё».');
+      $('[data-video-file]').value='';$('[data-video-caption]').value='';uploadStatus.textContent='Видео готово.';
+    }catch(error){uploadStatus.textContent='';setStatus(error.message||'Не удалось загрузить видео.','error');}
+    finally{button.disabled=false;}
+  }
+  $('[data-add-video]').onclick=addVideoFile;
+  $('[data-apply-media]').onclick=()=>{
+    if(!selectedMedia){setStatus('Сначала нажмите на фото или видео в тексте.','warning');return;}
+    checkpoint();
+    [...selectedMedia.classList].filter(name=>/^media-(?:width|align)-/.test(name)).forEach(name=>selectedMedia.classList.remove(name));
+    selectedMedia.classList.add(`media-width-${$('[data-media-width]').value}`,`media-align-${$('[data-media-align]').value}`);
+    recordChange();setStatus('Размер и выравнивание изменены.','dirty');
+  };
+  $('[data-replace-media]').onclick=()=>{
+    if(!selectedMedia){setStatus('Сначала нажмите на фото или видео в тексте.','warning');return;}
+    const media=normalizeMediaUrl($('[data-media-url]').value.trim());
+    if(!media){setStatus('Для замены укажите безопасную ссылку выше.','error');return;}
+    checkpoint();selectedMedia.insertAdjacentHTML('beforebegin',sanitizeHtml(mediaFigureHtml(media,$('[data-media-caption]').value),document));selectedMedia.remove();selectedMedia=null;recordChange();
+    setStatus('Медиа заменено.','dirty');
+  };
+  $('[data-remove-media]').onclick=()=>{
+    if(!selectedMedia){setStatus('Сначала нажмите на фото или видео в тексте.','warning');return;}
+    checkpoint();selectedMedia.remove();selectedMedia=null;recordChange();$('[data-selected-media]').textContent='Нажмите на фото или видео в тексте.';setStatus('Медиа удалено.','dirty');
+  };
   const preset=$('[data-preset]');
   for(const name of window.PortiaTheme.names){const option=document.createElement('option');option.value=name;option.textContent=STYLE_LABELS[name]||name;preset.append(option);}
   function rgbHex(color) {

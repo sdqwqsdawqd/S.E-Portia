@@ -113,6 +113,10 @@
 .editor-block-list button span { color:#8ea095; font-size:10px; font-weight:400; }
 .editor-upload-status { min-height:1.5em; margin:8px 0 0!important; color:#9bcdb0!important; }
 .charter-editor-canvas .portia-media { margin:24px auto; }
+.charter-editor-canvas .portia-media:hover,
+.charter-editor-canvas img:hover,
+.charter-editor-canvas video:hover,
+.charter-editor-canvas iframe:hover { outline:2px solid #28c98b; outline-offset:3px; cursor:pointer; }
 .charter-editor-canvas .portia-divider { margin:30px 0; border:0; border-top:1px solid rgba(42,91,66,.35); }
 .charter-editor-dialog button:active { transform:translateY(1px); }
 .charter-editor-dialog button:disabled,.charter-editor-dialog input:disabled,.charter-editor-dialog select:disabled { opacity:.45; cursor:not-allowed; }

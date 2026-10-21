@@ -147,11 +147,13 @@ export function normalizeMediaUrl(value) {
 }
 
 const SAFE_STYLE_PROPERTIES = new Set([
-  'background-color', 'color', 'font-size', 'font-style', 'font-weight',
-  'letter-spacing', 'line-height', 'text-align', 'text-decoration',
+  'background-color', 'border', 'border-color', 'border-style', 'border-width',
+  'color', 'font-size', 'font-style', 'font-weight', 'height', 'letter-spacing',
+  'line-height', 'max-height', 'max-width', 'min-height', 'min-width',
+  'text-align', 'text-decoration', 'width',
 ]);
 
-function cleanStyle(value) {
+export function sanitizeInlineStyle(value) {
   return String(value || '').split(';').map(part => part.trim()).filter(Boolean).flatMap(part => {
     const separator = part.indexOf(':');
     if (separator < 1) return [];
@@ -162,6 +164,13 @@ function cleanStyle(value) {
   }).join(';');
 }
 
+export function isSafeResourceUrl(value) {
+  const url = String(value || '').trim();
+  if (!url || /[\\\u0000-\u001f\u007f]/.test(url) || url.startsWith('//')) return false;
+  if (/^(?:https?:|\/|\.\/|\.\.\/|#)/i.test(url)) return true;
+  return !/^[a-z][a-z\d+.-]*:/i.test(url);
+}
+
 function fallbackSanitize(html) {
   let clean = html
     .replace(/<(script|style|iframe|object|embed|form|input|button|textarea|select)\b[^>]*>[\s\S]*?<\/\1\s*>/gi, '')
@@ -169,7 +178,7 @@ function fallbackSanitize(html) {
     .replace(/\s+on[a-z]+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi, '')
     .replace(/\s+(href|src)\s*=\s*(["'])\s*(?:javascript|data:text\/html)[\s\S]*?\2/gi, '');
   clean = clean.replace(/\sstyle\s*=\s*(["'])([\s\S]*?)\1/gi, (_all, quote, style) => {
-    const safe = cleanStyle(style);
+    const safe = sanitizeInlineStyle(style);
     return safe ? ` style=${quote}${safe}${quote}` : '';
   });
   return clean;
@@ -205,10 +214,10 @@ export function sanitizeHtml(value, documentRef = globalThis.document) {
     }
     for (const name of ['href', 'src', 'poster']) {
       const attribute = element.getAttribute(name);
-      if (attribute && !/^(?:https?:|\/|\.\/|\.\.\/|#)/i.test(attribute)) element.removeAttribute(name);
+      if (attribute && !isSafeResourceUrl(attribute)) element.removeAttribute(name);
     }
     if (element.hasAttribute('style')) {
-      const style = cleanStyle(element.getAttribute('style'));
+      const style = sanitizeInlineStyle(element.getAttribute('style'));
       if (style) element.setAttribute('style', style);
       else element.removeAttribute('style');
     }

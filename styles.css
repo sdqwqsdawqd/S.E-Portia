@@ -46,6 +46,12 @@
 .portia-media iframe { aspect-ratio: 16 / 9; min-height: 220px; }
 .portia-media figcaption { padding: 10px 14px; color: var(--ink-soft); font-size: .86rem; line-height: 1.45; text-align: center; }
 .portia-media--link { padding: 16px; text-align: center; }
+.media-width-50 { width: 50% !important; max-width: 50% !important; }
+.media-width-75 { width: 75% !important; max-width: 75% !important; }
+.media-width-100 { width: 100% !important; max-width: 100% !important; }
+.media-align-left { margin-left: 0 !important; margin-right: auto !important; }
+.media-align-center { margin-left: auto !important; margin-right: auto !important; }
+.media-align-right { margin-left: auto !important; margin-right: 0 !important; }
 .portia-divider { margin: 32px 0; border: 0; border-top: 1px solid rgba(40, 91, 66, .3); }
 @media (max-width: 600px) {
   .portia-media { margin: 20px auto; }

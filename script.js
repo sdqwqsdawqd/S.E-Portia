@@ -821,7 +821,12 @@ function initNavigation() {
 }
 
 async function getBaselineContent() {
-  return Object.fromEntries(await Promise.all(SECTIONS.map(async ({ id }) => [id, await loadBaselineSection(id)])));
+  const results = await Promise.allSettled(SECTIONS.map(async ({ id }) => [id, await loadBaselineSection(id)]));
+  return Object.fromEntries(results.flatMap((result) => {
+    if (result.status === 'fulfilled') return [result.value];
+    console.warn('Не удалось подготовить один из резервных разделов.', result.reason);
+    return [];
+  }));
 }
 
 async function applyStoredState(data) {
@@ -871,6 +876,6 @@ document.addEventListener('DOMContentLoaded', async () => {
   initNavigation();
   addButtonWebs();
   initSpiderWalkers();
-  await initializeCharter();
   await switchPage('page1');
+  initializeCharter().catch((error) => console.warn('Фоновое обновление устава не удалось.', error));
 });
