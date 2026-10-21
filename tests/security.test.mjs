@@ -102,8 +102,19 @@ test('editor exposes clear Text, Styles, Blocks and Media work areas', async () 
 
 test('reader renders the first section before remote initialization completes', async () => {
   const source = await read('script.js');
+  const boot = await read('editor-boot.js');
   assert.match(source, /await switchPage\('page1'\);\s*initializeCharter\(\)\.catch/);
   assert.match(source, /Promise\.allSettled/);
+  assert.match(source, /ready:\s*charterReady/);
+  assert.match(boot, /await window\.PortiaCharter\.ready/);
+});
+
+test('media selection prefers the enclosing figure before its child element', async () => {
+  const source = await read('content-editor.js');
+  assert.match(source, /closest\('\.portia-media'\)\s*\|\|\s*event\.target\.closest\('img, video, iframe'\)/);
+  assert.match(source, /state\.uploading/);
+  assert.match(source, /const uploadSection=state\.active/);
+  assert.match(source, /appendBlock\([^;]+uploadSection\)/s);
 });
 
 test('style registry includes every incumbent charter class', async () => {

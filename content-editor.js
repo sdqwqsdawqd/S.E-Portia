@@ -38,7 +38,7 @@ export async function mountEditor(api) {
   if (!api) return;
   const history = new History();
   const blockSelection = new BlockSelection();
-  const state = {content:{}, revision:0, active:'page1', dirty:false, saving:false, sourceMode:false, ranges:{}, addNext:false};
+  const state = {content:{}, revision:0, active:'page1', dirty:false, saving:false, uploading:0, sourceMode:false, ranges:{}, addNext:false};
   let saved = '', inputTimer, gesture = null, composing = false, selectedMedia = null, nextBlockId = 1;
   const blockIds = new WeakMap();
   const dialog = document.createElement('dialog');
@@ -284,7 +284,7 @@ export async function mountEditor(api) {
   });
   canvas.addEventListener('click',event=>{
     if(event.target.closest('a'))event.preventDefault();
-    const media=event.target.closest('.portia-media, img, video, iframe');
+    const media=event.target.closest('.portia-media') || event.target.closest('img, video, iframe');
     if(media && canvas.contains(media)){
       selectedMedia=media;
       $('[data-selected-media]').textContent='Выбрано: '+(media.querySelector?.('figcaption')?.textContent || media.getAttribute?.('alt') || media.tagName.toLowerCase());
@@ -333,17 +333,24 @@ export async function mountEditor(api) {
   dialog.querySelectorAll('[data-command]').forEach(button=>button.onclick=()=>nativeCommand(button.dataset.command));
   $('[data-link]').onclick=()=>{const url=prompt('Адрес ссылки (https://…)');if(url && /^https?:\/\//i.test(url))nativeCommand('createLink',url);};
   $('[data-source]').onclick=()=>{
+    if(state.uploading){setStatus('Дождитесь завершения загрузки файла.','warning');return;}
     checkpoint();state.sourceMode=!state.sourceMode;clearSelections();
     canvas.hidden=state.sourceMode;source.hidden=!state.sourceMode;
     $('[data-source]').setAttribute('aria-pressed',String(state.sourceMode));render();
   };
-  function appendBlock(html,message) {
-    if(state.sourceMode || state.saving)return;
+  function appendBlock(html,message,targetId=state.active) {
+    if(state.saving)return false;
     checkpoint();
-    canvas.insertAdjacentHTML('beforeend',sanitizeHtml(html,document));
-    source.value=canvas.innerHTML;recordChange();
-    canvas.lastElementChild?.scrollIntoView({behavior:'smooth',block:'center'});
+    const safe=sanitizeHtml(html,document);
+    if(targetId===state.active && !state.sourceMode){
+      canvas.insertAdjacentHTML('beforeend',safe);source.value=canvas.innerHTML;
+      canvas.lastElementChild?.scrollIntoView({behavior:'smooth',block:'center'});
+    }else{
+      const root=document.createElement('div');root.innerHTML=sanitizeHtml(state.content[targetId]||'',document);root.insertAdjacentHTML('beforeend',safe);state.content[targetId]=root.innerHTML;
+    }
+    recordChange();
     setStatus(message,'dirty');
+    return true;
   }
   const blockTemplates={
     title:'<div class="content-block"><h2 class="block-title">Новый заголовок</h2><div class="block-text">Введите текст блока…</div></div>',
@@ -359,7 +366,8 @@ export async function mountEditor(api) {
     const file=$('[data-image-file]').files?.[0];
     if(!file){setStatus('Выберите изображение.','warning');return;}
     if(file.size>25*1024*1024){setStatus('Исходный файл должен быть меньше 25 МБ.','error');return;}
-    const uploadStatus=$('[data-upload-status]'),button=$('[data-add-image]');button.disabled=true;
+    const uploadSection=state.active;
+    const uploadStatus=$('[data-upload-status]'),button=$('[data-add-image]');button.disabled=true;state.uploading+=1;
     try{
       uploadStatus.textContent='Сжимаем изображение…';
       const optimized=await compressImage(file);
@@ -367,10 +375,10 @@ export async function mountEditor(api) {
       const uploaded=await window.PortiaMedia.upload(optimized);
       const alt=escapeHtml($('[data-image-alt]').value||'Изображение Portia');
       const caption=escapeHtml($('[data-image-caption]').value);
-      appendBlock(`<figure class="portia-media portia-media--image"><img src="${escapeHtml(uploaded.url)}" alt="${alt}" loading="lazy">${caption?`<figcaption>${caption}</figcaption>`:''}</figure>`,'Изображение добавлено. Нажмите «Сохранить всё».');
+      if(!appendBlock(`<figure class="portia-media portia-media--image"><img src="${escapeHtml(uploaded.url)}" alt="${alt}" loading="lazy">${caption?`<figcaption>${caption}</figcaption>`:''}</figure>`,'Изображение добавлено. Нажмите «Сохранить всё».',uploadSection))throw Error('Изображение загружено, но не удалось вставить его в раздел.');
       $('[data-image-file]').value='';$('[data-image-alt]').value='';$('[data-image-caption]').value='';uploadStatus.textContent='Изображение готово.';
     }catch(error){uploadStatus.textContent='';setStatus(error.message||'Не удалось добавить изображение.','error');}
-    finally{button.disabled=false;}
+    finally{state.uploading=Math.max(0,state.uploading-1);button.disabled=false;}
   }
   $('[data-add-image]').onclick=addImage;
 
@@ -398,14 +406,15 @@ export async function mountEditor(api) {
     if(!file){setStatus('Выберите MP4 или WebM видео.','warning');return;}
     if(!['video/mp4','video/webm'].includes(file.type)){setStatus('Поддерживаются только MP4 и WebM.','error');return;}
     if(file.size>50*1024*1024){setStatus('Видеофайл должен быть меньше 50 МБ.','error');return;}
-    const button=$('[data-add-video]'),uploadStatus=$('[data-upload-status]');button.disabled=true;
+    const uploadSection=state.active;
+    const button=$('[data-add-video]'),uploadStatus=$('[data-upload-status]');button.disabled=true;state.uploading+=1;
     try{
       uploadStatus.textContent=`Загружаем видео ${Math.max(1,Math.round(file.size/1024/1024))} МБ…`;
       const uploaded=await window.PortiaMedia.upload(file);
-      appendBlock(mediaFigureHtml({kind:'video',url:uploaded.url},$('[data-video-caption]').value),'Видео добавлено. Нажмите «Сохранить всё».');
+      if(!appendBlock(mediaFigureHtml({kind:'video',url:uploaded.url},$('[data-video-caption]').value),'Видео добавлено. Нажмите «Сохранить всё».',uploadSection))throw Error('Видео загружено, но не удалось вставить его в раздел.');
       $('[data-video-file]').value='';$('[data-video-caption]').value='';uploadStatus.textContent='Видео готово.';
     }catch(error){uploadStatus.textContent='';setStatus(error.message||'Не удалось загрузить видео.','error');}
-    finally{button.disabled=false;}
+    finally{state.uploading=Math.max(0,state.uploading-1);button.disabled=false;}
   }
   $('[data-add-video]').onclick=addVideoFile;
   $('[data-apply-media]').onclick=()=>{
@@ -473,6 +482,7 @@ export async function mountEditor(api) {
     }catch(error){setStatus(error.message,'error');}
   }
   async function save() {
+    if(state.uploading){setStatus('Дождитесь завершения загрузки файла, затем сохраните.','warning');return;}
     checkpoint();if(!state.dirty || state.saving)return;
     const payload=canonicalContent(structuredClone(state.content));
     state.saving=true;saveButton.disabled=true;

@@ -22,6 +22,8 @@ const baselineCache = {};
 let charterRevision = 0;
 let charterUpdatedAt = null;
 let charterStyles = '{}';
+let resolveCharterReady;
+const charterReady = new Promise((resolve) => { resolveCharterReady = resolve; });
 let currentIndex = -1;
 let navigationRevision = 0;
 let idleWebTimer = null;
@@ -854,13 +856,14 @@ window.PortiaCharter = {
   getStyles: () => charterStyles,
   getRevision: () => charterRevision,
   getUpdatedAt: () => charterUpdatedAt,
+  ready: charterReady,
 };
 
 async function initializeCharter() {
-  const baseline = await getBaselineContent();
-  Object.assign(sectionCache, baseline);
-  if (!window.PortiaSupabase) return;
   try {
+    const baseline = await getBaselineContent();
+    Object.assign(sectionCache, baseline);
+    if (!window.PortiaSupabase) return;
     const data = await window.PortiaSupabase.loadCharter(baseline);
     if (data) await applyStoredState(data);
     window.PortiaSupabase.subscribe((next) => {
@@ -869,6 +872,8 @@ async function initializeCharter() {
     });
   } catch (error) {
     console.warn('Supabase недоступен, показана встроенная версия устава.', error);
+  } finally {
+    resolveCharterReady();
   }
 }
 
