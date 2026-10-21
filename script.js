@@ -8,6 +8,7 @@ const SECTIONS = [
   { id: 'page7', num: '07', label: 'Логи' },
   { id: 'page8', num: '08', label: 'История руководства' },
 ];
+const CONTENT_VERSION = 'd5b0d8d-editor-1';
 
 // Идентификатор листа всегда равен его номеру; ниже указан файл с его содержимым.
 const SECTION_FILES = {
@@ -130,7 +131,7 @@ async function loadBaselineSection(targetId) {
   if (baselineCache[targetId]) return baselineCache[targetId];
 
   const fileId = SECTION_FILES[targetId] || targetId;
-  const response = await fetch(`sections/${fileId}.html`);
+  const response = await fetch(`sections/${fileId}.html?v=${CONTENT_VERSION}`);
   if (!response.ok) throw new Error(`Не удалось загрузить ${targetId}`);
 
   const html = await response.text();

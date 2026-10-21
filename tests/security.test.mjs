@@ -109,3 +109,9 @@ test('style registry includes every incumbent charter class', async () => {
     assert.match(source, new RegExp(`['\"]${className}['\"]`), `editor missing ${className}`);
   }
 });
+
+test('section requests carry the release version so GitHub Pages cannot serve stale rules', async () => {
+  const source = await read('script.js');
+  assert.match(source, /const CONTENT_VERSION = ['"]d5b0d8d-editor-1['"]/);
+  assert.match(source, /sections\/\$\{fileId\}\.html\?v=\$\{CONTENT_VERSION\}/);
+});
