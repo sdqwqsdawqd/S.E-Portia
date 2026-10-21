@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex,nofollow">
+  <title>Вход владельца — Portia</title>
+  <link rel="icon" href="Portia.png">
+  <style>
+    :root{color-scheme:dark;font-family:Inter,system-ui,sans-serif;background:#07110e;color:#e8f4ed}
+    *{box-sizing:border-box}body{margin:0;min-height:100vh;display:grid;place-items:center;padding:24px;background:radial-gradient(circle at 50% 0,#18392d 0,#07110e 52%)}
+    main{width:min(440px,100%);padding:32px;border:1px solid #315e4b;border-radius:18px;background:#0d1d17;box-shadow:0 24px 70px #0009}
+    img{width:58px;height:58px;object-fit:contain}p{color:#a9c1b5;line-height:1.55}label{display:grid;gap:8px;font-weight:700;margin-top:24px}
+    input,button{width:100%;min-height:48px;border-radius:10px;font:inherit}input{border:1px solid #416b58;background:#07110e;color:#fff;padding:0 14px}
+    button{margin-top:14px;border:0;background:#52c889;color:#06120d;font-weight:900;cursor:pointer}button:disabled{opacity:.55;cursor:wait}
+    #status{min-height:24px;margin:16px 0 0;color:#b8d9c8}.error{color:#ffaaa4!important}.ok{color:#7ce2ac!important}
+    small{display:block;margin-top:18px;color:#758d81}
+  </style>
+</head>
+<body>
+  <main>
+    <img src="Portia2.png" alt="Portia">
+    <h1>Вход владельца</h1>
+    <p>Редактор открывается только после входа в подтверждённый аккаунт владельца. Посетители сайта этой страницы и панели редактора не видят.</p>
+    <form id="owner-form">
+      <label>Email владельца
+        <input id="owner-email" type="email" autocomplete="email" value="qloxzick@gmail.com" required>
+      </label>
+      <button type="submit">Отправить ссылку для входа</button>
+    </form>
+    <p id="status" role="status"></p>
+    <small>После перехода по ссылке из письма редактор откроется автоматически.</small>
+  </main>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.118.0/dist/umd/supabase.min.js"></script>
+  <script src="supabase-data.js?v=1"></script>
+  <script>
+    const form=document.querySelector('#owner-form');
+    const email=document.querySelector('#owner-email');
+    const status=document.querySelector('#status');
+    const button=form.querySelector('button');
+    (async()=>{const session=await PortiaSupabase.getOwnerSession();if(session.isOwner)location.replace('index.html?edit=1');})();
+    form.addEventListener('submit',async event=>{
+      event.preventDefault();button.disabled=true;status.className='';status.textContent='Отправляем…';
+      try{await PortiaSupabase.sendMagicLink(email.value);status.className='ok';status.textContent='Ссылка отправлена. Откройте письмо на этом устройстве.';}
+      catch(error){status.className='error';status.textContent=error.message;}
+      finally{button.disabled=false;}
+    });
+  </script>
+</body>
+</html>

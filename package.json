@@ -1,5 +1,7 @@
 {
-  "dependencies": {
-    "firebase": "^12.19.0"
+  "name": "se-portia",
+  "private": true,
+  "scripts": {
+    "test": "node --test tests/*.test.mjs"
   }
 }
