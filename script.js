@@ -17,17 +17,6 @@ const SECTION_FILES = {
 };
 
 const sectionCache = {};
-let storedRevision = 0;
-let storedUpdatedAt = null;
-const remoteStatePromise = window.PortiaSupabase.loadCharter()
-  .then((state) => {
-    if (state?.content) Object.assign(sectionCache, state.content);
-    window.PortiaTheme?.apply(state?.content?.__styles);
-    storedRevision = Number(state?.revision || 0);
-    storedUpdatedAt = state?.updatedAt || null;
-    return state;
-  })
-  .catch(() => null);
 let currentIndex = -1;
 let navigationRevision = 0;
 let idleWebTimer = null;
@@ -106,6 +95,7 @@ function addNavigationWeb(container, itemSelector) {
 
   redraw();
   window.addEventListener('resize', redraw);
+  document.fonts?.ready.then(redraw);
 }
 
 function scheduleIdleWeb(targetId) {
@@ -133,8 +123,7 @@ async function loadSection(targetId) {
     return SECTION_HTML[targetId];
   }
 
-  await remoteStatePromise;
-  if (typeof sectionCache[targetId] === 'string') return sectionCache[targetId];
+  if (sectionCache[targetId]) return sectionCache[targetId];
 
   const fileId = SECTION_FILES[targetId] || targetId;
   const response = await fetch(`sections/${fileId}.html`);
@@ -143,19 +132,6 @@ async function loadSection(targetId) {
   const html = await response.text();
   sectionCache[targetId] = html;
   return html;
-}
-
-async function applyStoredState(state, refresh = true) {
-  if (!state?.content) return;
-  Object.assign(sectionCache, state.content);
-  window.PortiaTheme?.apply(state.content.__styles);
-  storedRevision = Number(state.revision || storedRevision);
-  storedUpdatedAt = state.updatedAt || storedUpdatedAt;
-  if (refresh && currentIndex >= 0 && !secretGame) {
-    const targetId = SECTIONS[currentIndex]?.id;
-    currentIndex = -1;
-    await switchPage(targetId);
-  }
 }
 
 /* Паук живёт в самом списке: код одинаков для ПК и мобильной панели. */
@@ -187,7 +163,10 @@ class SpiderWalker {
     });
 
     this.resizeLayer();
-    window.addEventListener('resize', () => this.resizeLayer());
+    window.addEventListener('resize', () => {
+      this.resizeLayer();
+      if (this.currentTarget) this.walkTo(this.currentTarget);
+    });
   }
 
   resizeLayer() {
@@ -264,7 +243,7 @@ class SpiderWalker {
 
   startPatrol(targetId) {
     const item = this.items().find((entry) => entry.dataset.target === targetId);
-    if (!item || !this.container.getClientRects().length || matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    if (!item || !this.container.getClientRects().length) return;
 
     const runId = this.runId;
     const startedAt = performance.now();
@@ -359,24 +338,54 @@ class SpiderWalker {
 const spiderWalkers = [];
 let paperTurn = null;
 
-function turnPaper(previousSheet, direction) {
+function captureCurrentSheet() {
+  const paper = document.querySelector('.paper');
+  if (!paper) return null;
+
+  const sheet = document.createElement('div');
+  sheet.className = 'paper-turn-sheet';
+  Array.from(paper.children)
+    .filter((child) => !child.classList.contains('paper-turn-sheet'))
+    .forEach((child) => sheet.appendChild(child.cloneNode(true)));
+
+  sheet.querySelectorAll('[id]').forEach((node) => node.removeAttribute('id'));
+  sheet.setAttribute('aria-hidden', 'true');
+  sheet.inert = true;
+  return { sheet, height: paper.offsetHeight };
+}
+
+function turnPaper(snapshot, direction) {
   paperTurn?.cancel();
   document.querySelectorAll('.paper-turn-sheet').forEach((sheet) => sheet.remove());
-  if (!previousSheet || matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  if (!snapshot) return;
+
   const paper = document.querySelector('.paper');
-  previousSheet.className = 'paper-turn-sheet';
-  previousSheet.setAttribute('aria-hidden', 'true');
-  previousSheet.inert = true;
-  previousSheet.removeAttribute('id');
-  previousSheet.querySelectorAll('[id]').forEach((node) => node.removeAttribute('id'));
-  previousSheet.style.transformOrigin = direction > 0 ? 'left center' : 'right center';
-  paper.appendChild(previousSheet);
-  paperTurn = previousSheet.animate([
-    { transform: 'perspective(1600px) rotateY(0deg)', opacity: 1 },
-    { transform: `perspective(1600px) rotateY(${direction * -32}deg)`, opacity: .98, offset: .5 },
-    { transform: `perspective(1600px) rotateY(${direction * -92}deg)`, opacity: 0 },
-  ], { duration: 520, easing: 'cubic-bezier(.32,.05,.22,1)', fill: 'forwards' });
-  paperTurn.finished.then(() => previousSheet.remove(), () => previousSheet.remove());
+  const { sheet, height } = snapshot;
+  const lockedHeight = Math.max(height, paper.offsetHeight);
+
+  sheet.style.height = `${height}px`;
+  paper.style.minHeight = `${lockedHeight}px`;
+  paper.classList.add('is-turning');
+  paper.appendChild(sheet);
+
+  let fallbackTimer;
+  const animation = { cancel: () => finish() };
+  const finish = () => {
+    window.clearTimeout(fallbackTimer);
+    sheet.removeEventListener('animationend', onAnimationEnd);
+    sheet.remove();
+    if (paperTurn !== animation) return;
+    paper.classList.remove('is-turning');
+    paper.style.minHeight = '';
+    paperTurn = null;
+  };
+  const onAnimationEnd = (event) => {
+    if (event.target === sheet) finish();
+  };
+  paperTurn = animation;
+  sheet.addEventListener('animationend', onAnimationEnd);
+  sheet.classList.add(direction > 0 ? 'paper-turn-up' : 'paper-turn-down');
+  fallbackTimer = window.setTimeout(finish, 850);
 }
 
 function initSpiderWalkers() {
@@ -393,20 +402,21 @@ function initSpiderWalkers() {
 }
 
 async function switchPage(targetId) {
-  if (secretGame) closeSecretGame();
+  if (secretGame) closeSecretGame(false);
   const targetIndex = SECTIONS.findIndex((section) => section.id === targetId);
   if (targetIndex === -1 || targetIndex === currentIndex) return;
 
   const revision = ++navigationRevision;
-  const direction = targetIndex >= currentIndex ? 1 : -1;
-  const previousSheet = currentIndex >= 0 && !matchMedia('(prefers-reduced-motion: reduce)').matches
-    ? document.querySelector('.paper').cloneNode(true) : null;
-  previousSheet?.querySelectorAll('.paper-turn-sheet').forEach((sheet) => sheet.remove());
+  const direction = targetIndex > currentIndex ? 1 : -1;
+  const previousSheet = currentIndex >= 0
+    ? captureCurrentSheet() : null;
   const meta = SECTIONS[targetIndex];
   const content = document.getElementById('right-page-content');
   document.querySelectorAll('.nav-item, .mobile-pill').forEach((button) => {
     const active = button.dataset.target === targetId;
     button.classList.toggle('active', active);
+    if (active) button.setAttribute('aria-current', 'page');
+    else button.removeAttribute('aria-current');
     if (active && button.classList.contains('mobile-pill')) {
       button.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
     }
@@ -414,12 +424,12 @@ async function switchPage(targetId) {
 
   spiderWalkers.forEach((walker) => walker.walkTo(targetId));
   scheduleIdleWeb(targetId);
-  document.getElementById('paperSectionNumber').textContent = meta.num;
-  document.getElementById('paperEyebrow').textContent = `Раздел ${meta.num} из ${String(SECTIONS.length).padStart(2, '0')} — ${meta.label}`;
 
   try {
     const html = await loadSection(targetId);
     if (revision !== navigationRevision || secretGame) return;
+    document.getElementById('paperSectionNumber').textContent = meta.num;
+    document.getElementById('paperEyebrow').textContent = `Раздел ${meta.num} из ${String(SECTIONS.length).padStart(2, '0')} — ${meta.label}`;
     content.innerHTML = html;
     turnPaper(previousSheet, direction);
     currentIndex = targetIndex;
@@ -567,20 +577,25 @@ class SecretShooter {
     this.player.x += ((held('right') ? 1 : 0) - (held('left') ? 1 : 0)) * delta * 0.00062;
     this.player.x = Math.max(0.07, Math.min(0.93, this.player.x));
     if (this.shotRequested && delta > 0) {
-      this.bullets.push({ x: this.player.x, y: this.player.y - 0.07 });
+      this.bullets.push({ x: this.player.x, y: this.player.y - (this.width * 0.1045 / this.height) });
       this.lastShot = this.elapsed;
       this.shotRequested = false;
-      this.flash = 90;
+      this.flash = 170;
       gameAudio.play();
     }
     this.flash = Math.max(0, this.flash - delta);
     this.spawnClock += delta;
     const rest = this.elapsed % 24000 > 20500;
-    const spawnInterval = (1050 - difficulty * 590) * (rest ? 1.65 : 1);
-    if (this.spawnClock >= spawnInterval && this.enemies.length < 12) {
-      // Nearby lanes limit impossible cross-screen trips, especially on phones.
-      const anchor = this.enemies.at(-1)?.x ?? this.player.x;
-      const x = Math.max(0.1, Math.min(0.9, anchor + (Math.random() - 0.5) * 0.65));
+    const spawnInterval = (760 - difficulty * 410) * (rest ? 1.2 : 1);
+    if (this.spawnClock >= spawnInterval && this.enemies.length < 18) {
+      // Choose a separated lane most of the time; occasional close spawns add variety.
+      const recent = this.enemies.filter((enemy) => enemy.y < 0.3);
+      const candidates = Array.from({ length: 16 }, () => 0.1 + Math.random() * 0.8);
+      const separation = (x) => Math.min(1, ...recent.map((enemy) => Math.abs(enemy.x - x)));
+      const spaced = candidates.filter((x) => separation(x) >= 0.23);
+      const x = Math.random() < 0.08 ? candidates[0]
+        : spaced.length ? spaced[Math.floor(Math.random() * spaced.length)]
+        : candidates.reduce((best, candidate) => separation(candidate) > separation(best) ? candidate : best);
       this.enemies.push({ x, y: -0.1, speed: 0.00019 + difficulty * 0.00011, size: 0.10 });
       this.spawnClock = 0;
     }
@@ -625,6 +640,9 @@ class SecretShooter {
     });
     ctx.fillStyle = '#64ead0';
     this.bullets.forEach((bullet) => {
+      ctx.fillStyle = 'rgba(100,234,208,.25)';
+      ctx.fillRect(bullet.x * this.width - 3, bullet.y * this.height, 6, 26);
+      ctx.fillStyle = '#d8fff3';
       ctx.fillRect(bullet.x * this.width - 2, bullet.y * this.height - 9, 4, 13);
     });
     this.enemies.forEach((enemy) => {
@@ -637,15 +655,27 @@ class SecretShooter {
       ctx.fillRect(p.x * this.width, p.y * this.height, 3, 3);
     });
     ctx.globalAlpha = 1;
-    if (this.flash > 0 && !this.reducedMotion) {
-      ctx.fillStyle = `rgba(195,255,231,${this.flash / 110})`;
-      ctx.beginPath();
-      ctx.arc(this.player.x * this.width, (this.player.y - 0.07) * this.height, 7, 0, Math.PI * 2);
-      ctx.fill();
-    }
     const gunWidth = this.width * 0.11;
     const gunHeight = gunWidth * 1.9;
-    if (this.weapon.complete && this.weapon.naturalWidth) ctx.drawImage(this.weapon, this.player.x * this.width - gunWidth / 2, this.player.y * this.height - gunHeight / 2, gunWidth, gunHeight);
+    const shotProgress = this.flash / 170;
+    const recoil = Math.sin(shotProgress * Math.PI) * gunWidth * 0.18;
+    const muzzleX = this.player.x * this.width;
+    const muzzleY = this.player.y * this.height - gunHeight / 2 + recoil;
+    if (this.weapon.complete && this.weapon.naturalWidth) ctx.drawImage(this.weapon, muzzleX - gunWidth / 2, muzzleY, gunWidth, gunHeight);
+    if (this.flash > 65) {
+      ctx.save();
+      ctx.globalAlpha = (this.flash - 65) / 105;
+      ctx.fillStyle = '#b7ffe2';
+      ctx.beginPath();
+      ctx.moveTo(muzzleX, muzzleY - 24);
+      ctx.lineTo(muzzleX + 9, muzzleY - 5);
+      ctx.lineTo(muzzleX + 4, muzzleY + 3);
+      ctx.lineTo(muzzleX - 4, muzzleY + 3);
+      ctx.lineTo(muzzleX - 9, muzzleY - 5);
+      ctx.closePath();
+      ctx.fill();
+      ctx.restore();
+    }
   }
 
   persistBest() { try { localStorage.setItem('portia-secret-shooter-best', String(this.best)); } catch {} }
@@ -688,7 +718,11 @@ function renderLeaderboard(game) {
     }
     scores.forEach((entry, index) => {
       const item = document.createElement('li');
-      item.innerHTML = `<span>${index + 1}. ${entry.nickname}</span><b>${entry.score}</b>`;
+      const player = document.createElement('span');
+      const score = document.createElement('b');
+      player.textContent = `${index + 1}. ${entry.nickname}`;
+      score.textContent = String(entry.score);
+      item.append(player, score);
       list.appendChild(item);
     });
   }).catch(() => { list.innerHTML = '<li>Рейтинг временно недоступен.</li>'; });
@@ -747,12 +781,12 @@ function openSecretGame(restart = false) {
   renderLeaderboard(content.querySelector('.secret-game'));
 }
 
-function closeSecretGame() {
+function closeSecretGame(restorePage = true) {
   if (!secretGame) return;
   secretGame.destroy();
   secretGame = null;
   currentIndex = -1;
-  switchPage(secretGameReturnPage);
+  if (restorePage) switchPage(secretGameReturnPage);
 }
 
 function initNavigation() {
@@ -779,31 +813,4 @@ document.addEventListener('DOMContentLoaded', () => {
   addButtonWebs();
   initSpiderWalkers();
   switchPage('page1');
-});
-
-window.PortiaCharter = {
-  sections: SECTIONS.map((section) => ({ ...section })),
-  getSection: loadSection,
-  getRevision: () => storedRevision,
-  getUpdatedAt: () => storedUpdatedAt,
-  getStyles: () => sectionCache.__styles || '{}',
-  applyStoredState,
-};
-
-setInterval(async () => {
-  if (document.hidden) return;
-  try {
-    const data = await window.PortiaSupabase.loadCharter();
-    if (data?.content && data.revision > storedRevision) {
-      await applyStoredState(data);
-      window.dispatchEvent(new CustomEvent('charter-update', {detail:data}));
-    }
-  } catch { /* Keep the last readable version during a connection outage. */ }
-}, 10000);
-
-window.PortiaSupabase.subscribe(async (data) => {
-  if (data?.content && data.revision > storedRevision) {
-    await applyStoredState(data);
-    window.dispatchEvent(new CustomEvent('charter-update', {detail:data}));
-  }
 });
