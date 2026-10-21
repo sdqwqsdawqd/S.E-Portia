@@ -115,6 +115,7 @@ test('media selection prefers the enclosing figure before its child element', as
   assert.match(source, /state\.uploading/);
   assert.match(source, /const uploadSection=state\.active/);
   assert.match(source, /appendBlock\([^;]+uploadSection\)/s);
+  assert.match(source, /if\(targetId===state\.active\)source\.value=state\.content\[targetId\]/);
 });
 
 test('style registry includes every incumbent charter class', async () => {

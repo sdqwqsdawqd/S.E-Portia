@@ -347,6 +347,7 @@ export async function mountEditor(api) {
       canvas.lastElementChild?.scrollIntoView({behavior:'smooth',block:'center'});
     }else{
       const root=document.createElement('div');root.innerHTML=sanitizeHtml(state.content[targetId]||'',document);root.insertAdjacentHTML('beforeend',safe);state.content[targetId]=root.innerHTML;
+      if(targetId===state.active)source.value=state.content[targetId];
     }
     recordChange();
     setStatus(message,'dirty');
