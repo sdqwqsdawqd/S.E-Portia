@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFile } from 'node:fs/promises';
+import { readFile, readdir } from 'node:fs/promises';
 
 const read = (name) => readFile(new URL(`../${name}`, import.meta.url), 'utf8');
 
@@ -56,4 +56,17 @@ test('checked-in theme exposes every incumbent semantic style family', async () 
   for (const className of requiredClasses) {
     assert.match(css, new RegExp(`\\.${className}(?:[\\s,{.:#>]|$)`), `missing .${className}`);
   }
+});
+
+test('database migrations preserve revisions and restrict media writes to the owner', async () => {
+  const directory = new URL('../supabase/migrations/', import.meta.url);
+  const migrations = (await readdir(directory))
+    .filter((name) => name.endsWith('.sql'))
+    .sort();
+  const sql = (await Promise.all(migrations.map((name) => read(`supabase/migrations/${name}`)))).join('\n');
+
+  assert.match(sql, /create table if not exists public\.charter_revisions/i);
+  assert.match(sql, /insert into public\.charter_revisions/i);
+  assert.match(sql, /insert into storage\.buckets.*portia-media/is);
+  assert.match(sql, /storage\.objects.*qloxzick@gmail\.com/is);
 });

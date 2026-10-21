@@ -19,23 +19,32 @@
     },
   });
 
-  function normalize(row) {
+  function mergeContent(baseline, remote) {
+    const merged = { ...(baseline || {}) };
+    if (!remote || typeof remote !== 'object') return merged;
+    for (const [key, value] of Object.entries(remote)) {
+      if (typeof value === 'string') merged[key] = value;
+    }
+    return merged;
+  }
+
+  function normalize(row, baseline) {
     if (!row) return null;
     return {
-      content: row.content || {},
+      content: mergeContent(baseline, row.content),
       revision: Number(row.revision || 0),
       updatedAt: row.updated_at || null,
     };
   }
 
-  async function loadCharter() {
+  async function loadCharter(baseline) {
     const { data, error } = await client
       .from('charter_state')
       .select('content,revision,updated_at')
       .eq('id', 'main')
       .single();
     if (error) throw new Error('Не удалось загрузить устав из Supabase.');
-    return normalize(data);
+    return normalize(data, baseline);
   }
 
   async function getOwnerSession() {
@@ -91,6 +100,22 @@
     return () => client.removeChannel(channel);
   }
 
+  async function uploadMedia(file) {
+    const session = await getOwnerSession();
+    if (!session.isOwner) throw new Error('Загрузка доступна только владельцу.');
+    const extension = String(file?.name || '').split('.').pop()?.toLowerCase() || 'bin';
+    const safeExtension = /^[a-z0-9]{2,5}$/.test(extension) ? extension : 'bin';
+    const path = `${new Date().toISOString().slice(0, 10)}/${crypto.randomUUID()}.${safeExtension}`;
+    const { error } = await client.storage.from('portia-media').upload(path, file, {
+      cacheControl: '31536000',
+      upsert: false,
+      contentType: file.type || undefined,
+    });
+    if (error) throw new Error(error.message || 'Не удалось загрузить медиафайл.');
+    const { data } = client.storage.from('portia-media').getPublicUrl(path);
+    return { path, url: data.publicUrl };
+  }
+
   window.PortiaSupabase = {
     client,
     ownerEmail: OWNER_EMAIL,
@@ -101,4 +126,6 @@
     subscribe,
     signOut: () => client.auth.signOut(),
   };
+
+  window.PortiaMedia = { upload: uploadMedia };
 }());
