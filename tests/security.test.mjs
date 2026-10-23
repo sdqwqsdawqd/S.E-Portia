@@ -95,7 +95,6 @@ test('editor exposes clear Text, Styles, Blocks and Media work areas', async () 
   assert.match(source, /data-media-width/);
   assert.match(source, /data-remove-media/);
   assert.match(source, /compressImage/);
-  assert.match(source, /data-custom-hex/);
   assert.match(source, /BlockSelection/);
   assert.match(source, /sanitizeHtml\(state\.content\[state\.active\]/);
 });

@@ -9,6 +9,8 @@ const SECTIONS = [
   { id: 'page8', num: '08', label: 'История руководства' },
 ];
 const CONTENT_VERSION = 'd5b0d8d-editor-1';
+const ORIGINAL_SECTIONS = SECTIONS.map(section=>({...section}));
+let sectionMetadata='';
 
 // Идентификатор листа всегда равен его номеру; ниже указан файл с его содержимым.
 const SECTION_FILES = {
@@ -142,7 +144,7 @@ async function loadBaselineSection(targetId) {
 }
 
 async function loadSection(targetId) {
-  if (sectionCache[targetId]) return sectionCache[targetId];
+  if (Object.hasOwn(sectionCache,targetId)) return sectionCache[targetId];
   const html = await loadBaselineSection(targetId);
   sectionCache[targetId] = html;
   return html;
@@ -804,10 +806,9 @@ function closeSecretGame(restorePage = true) {
 }
 
 function initNavigation() {
-  document.querySelectorAll('.nav-item, .mobile-pill').forEach((button) => {
-    button.addEventListener('click', () => switchPage(button.dataset.target));
-  });
   document.addEventListener('click', (event) => {
+    const navigation=event.target.closest('.nav-item, .mobile-pill');
+    if(navigation)switchPage(navigation.dataset.target);
     if (event.target.closest('[data-open-secret-game]')) openSecretGame();
     if (event.target.closest('[data-close-secret-game]')) closeSecretGame();
     if (event.target.closest('[data-restart-secret-game]')) {
@@ -823,7 +824,7 @@ function initNavigation() {
 }
 
 async function getBaselineContent() {
-  const results = await Promise.allSettled(SECTIONS.map(async ({ id }) => [id, await loadBaselineSection(id)]));
+  const results = await Promise.allSettled(ORIGINAL_SECTIONS.map(async ({ id }) => [id, await loadBaselineSection(id)]));
   return Object.fromEntries(results.flatMap((result) => {
     if (result.status === 'fulfilled') return [result.value];
     console.warn('Не удалось подготовить один из резервных разделов.', result.reason);
@@ -833,15 +834,27 @@ async function getBaselineContent() {
 
 async function applyStoredState(data) {
   if (!data?.content) return;
+  const previousId=SECTIONS[currentIndex]?.id;
+  const {normalizeSections}=await import('./editor-core.mjs');
+  sectionMetadata=data.content.__sections || '';
+  SECTIONS.splice(0,SECTIONS.length,...normalizeSections(sectionMetadata,ORIGINAL_SECTIONS));
+  for(const [selector,buttonClass,numClass] of [['.nav-list','nav-item','nav-num'],['.mobile-tabs','mobile-pill','pill-num']]){
+    const nav=document.querySelector(selector);if(!nav)continue;
+    const existing=new Map([...nav.querySelectorAll('button[data-target]')].map(button=>[button.dataset.target,button]));
+    for(const section of SECTIONS){let button=existing.get(section.id);if(!button){button=document.createElement('button');button.type='button';button.className=buttonClass;button.dataset.target=section.id;button.append(document.createElement('span'),document.createElement('span'));button.firstElementChild.className=numClass;}
+      button.children[0].textContent=section.num;button.children[1].textContent=section.label;nav.append(button);existing.delete(section.id);
+    }
+    existing.forEach(button=>button.remove());
+  }
   for (const { id } of SECTIONS) {
-    if (typeof data.content[id] === 'string' && data.content[id].trim()) sectionCache[id] = data.content[id];
+    if (typeof data.content[id] === 'string') sectionCache[id] = data.content[id];
   }
   charterStyles = typeof data.content.__styles === 'string' ? data.content.__styles : charterStyles;
   charterRevision = Number(data.revision || charterRevision || 0);
   charterUpdatedAt = data.updatedAt || charterUpdatedAt;
   window.PortiaTheme?.apply(charterStyles);
 
-  const activeId = SECTIONS[currentIndex]?.id;
+  const activeId = SECTIONS.some(s=>s.id===previousId)?previousId:SECTIONS[0]?.id;
   if (activeId && !secretGame) {
     currentIndex = -1;
     await switchPage(activeId);
@@ -850,6 +863,8 @@ async function applyStoredState(data) {
 
 window.PortiaCharter = {
   sections: SECTIONS,
+  originalSections: ORIGINAL_SECTIONS,
+  getSectionMetadata:()=>sectionMetadata,
   getSection: loadSection,
   getBaselineContent,
   applyStoredState,
@@ -863,6 +878,12 @@ async function initializeCharter() {
   try {
     const baseline = await getBaselineContent();
     Object.assign(sectionCache, baseline);
+    try{
+      const response=await fetch('charter-snapshot.json',{cache:'no-cache'});
+      if(response.ok){const snapshot=await response.json();const {readDraft,sanitizeHtml}=await import('./editor-core.mjs');
+        if(readDraft(JSON.stringify(snapshot))){snapshot.content=Object.fromEntries(Object.entries(snapshot.content).map(([key,value])=>[key,key.startsWith('__')?value:sanitizeHtml(value,document)]));await applyStoredState(snapshot);Object.assign(baseline,snapshot.content);}
+      }
+    }catch(error){console.warn('Резервный снимок недоступен.',error);}
     if (!window.PortiaSupabase) return;
     const data = await window.PortiaSupabase.loadCharter(baseline);
     if (data) await applyStoredState(data);

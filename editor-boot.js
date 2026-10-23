@@ -5,8 +5,8 @@
   await window.PortiaCharter.ready;
   const css = document.createElement('link');
   css.rel = 'stylesheet';
-  css.href = 'content-editor.css?v=5';
+  css.href = 'content-editor.css?v=6';
   document.head.append(css);
-  const { mountEditor } = await import('./content-editor.js?v=5');
+  const { mountEditor } = await import('./content-editor.js?v=6');
   await mountEditor(window.PortiaCharter);
 })().catch((error) => console.error('Editor boot failed', error));

@@ -21,7 +21,7 @@
       const declarations = Object.entries(properties).flatMap(([key, css]) => {
         const value = values[key];
         const valid = key === 'fontWeight' ? /^[1-9]00$/.test(value)
-          : ['color','backgroundColor'].includes(key) ? /^(#[0-9a-f]{6}|transparent)$/i.test(value)
+          : ['color','backgroundColor'].includes(key) ? /^(#[0-9a-f]{6}(?:[0-9a-f]{2})?|transparent)$/i.test(value)
           : key === 'fontSize' ? /^\d+(?:\.\d+)?(?:px|rem|em|%)$/.test(value)
           : key === 'textAlign' ? /^(left|center|right|justify)$/.test(value)
           : key === 'fontStyle' ? /^(normal|italic)$/.test(value)

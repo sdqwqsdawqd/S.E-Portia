@@ -1,4 +1,5 @@
-import {mergeRanges,offsetRange,domRange,formatRanges,History,BlockSelection,normalizeMediaUrl,sanitizeHtml} from './editor-core.mjs';
+import {mergeRanges,offsetRange,domRange,formatRanges,History,BlockSelection,normalizeMediaUrl,sanitizeHtml,normalizeSections,readDraft,sourceSnapshot} from './editor-core.mjs';
+import {mountColorPicker} from './editor-color-picker.mjs';
 
 const COLOR_SWATCHES = ['#1c2422','#ffffff','#28c98b','#54b89a','#79d7be','#f3cf68','#f28c45','#df5757','#a879d7','#3979a8','#111713','#e9e4d9'];
 const STYLE_LABELS = {
@@ -41,13 +42,17 @@ export async function mountEditor(api) {
   const state = {content:{}, revision:0, active:'page1', dirty:false, saving:false, uploading:0, sourceMode:false, ranges:{}, addNext:false};
   let saved = '', inputTimer, gesture = null, composing = false, selectedMedia = null, nextBlockId = 1;
   const blockIds = new WeakMap();
+  const originals=api.originalSections || api.sections.filter(s=>/^page[1-8]$/.test(s.id));
+  const draftKey='portia-owner-draft-v1';
+  let lastDraftWritten='', selectedLeader=null;
+  const sections=()=>normalizeSections(state.content.__sections,originals);
   const dialog = document.createElement('dialog');
   dialog.className='charter-editor-dialog';
   dialog.setAttribute('aria-labelledby','editor-title');
   dialog.innerHTML=`
     <div class="charter-editor-shell">
       <header class="charter-editor-header">
-        <div><span class="charter-editor-kicker">PORTIA / УПРАВЛЕНИЕ СОДЕРЖИМЫМ</span><h1 id="editor-title">Редактор устава</h1><p>Выделяйте текст. Ctrl + ЛКМ выбирает или снимает целую строку/блок; Ctrl + перетаскивание добавляет фрагмент.</p></div>
+        <div><h1 id="editor-title">Редактор устава</h1></div>
         <button type="button" class="charter-editor-close" aria-label="Закрыть">×</button>
       </header>
       <nav class="charter-editor-tabs" aria-label="Разделы редактора"></nav>
@@ -73,11 +78,11 @@ export async function mountEditor(api) {
             <button data-tool-tab="styles">Стили</button>
             <button data-tool-tab="blocks">Блоки</button>
             <button data-tool-tab="media">Медиа</button>
+            <button data-tool-tab="sections">Разделы</button>
           </nav>
 
           <section class="editor-tool-panel active" data-tool-panel="text">
             <h2>Оформление текста</h2>
-            <p>Сначала выделите текст. Ctrl + ЛКМ добавляет ещё один фрагмент.</p>
             <div class="editor-button-grid">
               <button data-style="fontWeight" data-value="700" title="Ctrl+B"><b>Жирный</b></button>
               <button data-style="fontStyle" data-value="italic"><i>Курсив</i></button>
@@ -85,16 +90,15 @@ export async function mountEditor(api) {
               <button data-clear-format>Сбросить</button>
             </div>
             <label>Жирность<select data-weight aria-label="Жирность текста"><option value="400">Обычная</option><option value="500">Средняя</option><option value="600">Полужирная</option><option value="700">Жирная</option><option value="900">Максимальная</option></select></label>
+            <label>Размер текста<select data-font-size><option value="">Выбрать размер</option>${[12,14,16,18,20,24,28,32,40,48].map(n=>`<option value="${n}">${n} px</option>`).join('')}</select></label>
             <div class="editor-color-card">
               <strong>Цвет текста</strong>
-              <div class="editor-color-line"><input type="color" data-color value="#1c2422" aria-label="Цвет текста"><input data-custom-hex="color" value="#1c2422" maxlength="7" aria-label="HEX цвета текста"></div>
-              <div class="editor-swatches" data-swatches="color"></div>
+              <div class="editor-color-line"><input type="color" data-color value="#1c2422" aria-label="Цвет текста HEX"></div>
               <button data-apply-color class="editor-primary">Применить цвет</button>
             </div>
             <div class="editor-color-card">
               <strong>Цвет фона</strong>
-              <div class="editor-color-line"><input type="color" data-background value="#fff0a6" aria-label="Цвет фона текста"><input data-custom-hex="background" value="#fff0a6" maxlength="7" aria-label="HEX цвета фона"></div>
-              <div class="editor-swatches" data-swatches="background"></div>
+              <div class="editor-color-line"><input type="color" data-background value="#fff0a6" aria-label="Цвет фона текста HEX"></div>
               <button data-apply-background class="editor-primary">Применить фон</button><button data-no-background>Убрать фон</button>
             </div>
             <div class="editor-button-grid"><button data-command="insertUnorderedList">Маркированный список</button><button data-command="insertOrderedList">Нумерованный список</button><button data-link>Добавить ссылку</button></div>
@@ -102,7 +106,7 @@ export async function mountEditor(api) {
 
           <section class="editor-tool-panel" data-tool-panel="styles" hidden>
             <h2>Стили Portia</h2>
-            <p>Здесь находятся все стили исходного устава, включая бирюзовый Portia и ранги.</p>
+            <p>Ctrl + Alt + K — открыть стили для всех выбранных фрагментов.</p>
             <label>Готовый стиль<select data-preset aria-label="Стиль устава"></select></label>
             <div class="editor-style-preview"><span data-preview>Пример текста</span></div>
             <button data-preset-apply class="editor-primary">Применить к выделению</button>
@@ -156,9 +160,32 @@ export async function mountEditor(api) {
               <p data-selected-media>Нажмите на фото или видео в тексте.</p>
               <label>Ширина<select data-media-width><option value="100">100%</option><option value="75">75%</option><option value="50">50%</option></select></label>
               <label>Выравнивание<select data-media-align><option value="center">По центру</option><option value="left">Слева</option><option value="right">Справа</option></select></label>
-              <div class="editor-button-grid"><button data-apply-media>Применить размер</button><button data-replace-media>Заменить ссылкой выше</button><button data-remove-media>Удалить</button></div>
+              <div class="editor-button-grid"><button data-apply-media>Применить размер</button><button data-replace-media>Заменить ссылкой выше</button><button data-replace-file>Заменить файлом выше</button><button data-remove-media>Удалить</button></div>
             </div>
+            <details class="editor-leadership"><summary>Карточки руководства</summary>
+              <label>Карточка<select data-leader-select><option value="">Новая карточка</option></select></label>
+              <label>Группа<select data-leader-group></select></label>
+              <label>Имя<input data-leader-name maxlength="120"></label>
+              <label>Описание<textarea data-leader-description rows="4"></textarea></label>
+              <p>Для фото выберите карточку, нажмите её изображение и используйте замену медиа.</p>
+              <button data-leader-save>Добавить карточку</button><button data-leader-remove>Удалить карточку</button>
+            </details>
             <p class="editor-upload-status" data-upload-status role="status"></p>
+          </section>
+
+          <section class="editor-tool-panel" data-tool-panel="sections" hidden>
+            <h2>Разделы устава</h2>
+            <label>Название открытого раздела<input data-section-name maxlength="80"></label>
+            <button data-section-rename>Переименовать</button>
+            <div class="editor-button-grid"><button data-section-up>Выше</button><button data-section-down>Ниже</button></div>
+            <button data-section-add>Добавить новый раздел</button><button data-section-remove>Удалить этот раздел</button>
+            <p>Исходные восемь разделов защищены от удаления.</p>
+            <h2>Резервная копия</h2>
+            <button data-export>Скачать копию JSON</button>
+            <button data-source-backup>Записать копию в исходники</button>
+            <label>Восстановить копию<input data-import type="file" accept="application/json,.json"></label>
+            <p>Черновик сохраняется в этом браузере. Копия JSON позволяет перенести его и восстановить после очистки браузера.</p>
+            <p>Запись в исходники создаёт charter-snapshot.json в выбранной папке сайта. Для обновления GitHub затем отправьте этот файл в репозиторий. Фото и видео остаются по своим ссылкам.</p>
           </section>
 
           <p class="editor-tip">Ctrl + Z — отмена<br>Ctrl + Shift + Z — повтор<br>Ctrl + S — сохранить</p>
@@ -180,18 +207,11 @@ export async function mountEditor(api) {
       panel.hidden=!active;panel.classList.toggle('active',active);
     });
   }));
-  function validHex(value,fallback) { return /^#[0-9a-f]{6}$/i.test(String(value||'').trim()) ? value.trim() : fallback; }
-  function wireColor(kind,pickerSelector) {
-    const picker=$(pickerSelector), hex=$(`[data-custom-hex="${kind}"]`), swatches=$(`[data-swatches="${kind}"]`);
-    picker.addEventListener('input',()=>{hex.value=picker.value;});
-    hex.addEventListener('change',()=>{hex.value=validHex(hex.value,picker.value);picker.value=hex.value;});
-    for(const color of COLOR_SWATCHES){const button=document.createElement('button');button.type='button';button.className='editor-swatch';button.style.backgroundColor=color;button.title=color;button.setAttribute('aria-label',`Выбрать ${color}`);button.onclick=()=>{picker.value=color;hex.value=color;};swatches.append(button);}
-  }
-  wireColor('color','[data-color]');wireColor('background','[data-background]');
+  dialog.querySelectorAll('input[type="color"]').forEach(input=>mountColorPicker(input,COLOR_SWATCHES));
   const theme = () => {try {return JSON.parse(state.content.__styles || '{}');} catch {return {};}};
   function canonicalContent(content) {
     return Object.fromEntries(Object.entries(content).map(([key,value])=>{
-      if(key==='__styles')return [key,value];
+      if(key==='__styles' || key==='__sections')return [key,value];
       return [key,sanitizeHtml(value,document)];
     }));
   }
@@ -206,6 +226,10 @@ export async function mountEditor(api) {
     $('[data-undo]').disabled=history.index<=0 || state.saving;
     $('[data-redo]').disabled=history.index>=history.entries.length-1 || state.saving;
     setStatus(state.dirty?'Есть несохранённые изменения':'Все изменения сохранены',state.dirty?'dirty':'saved');
+    if(state.dirty){
+      try{lastDraftWritten=JSON.stringify({...snapshot(),revision:state.revision});localStorage.setItem(draftKey,lastDraftWritten);setStatus(navigator.onLine?'Черновик сохранён на устройстве · ещё не опубликован':'Нет сети · черновик сохранён на устройстве','dirty');}
+      catch{setStatus('Не удалось сохранить на устройстве. Скачайте копию JSON до закрытия.','error');}
+    }else if(lastDraftWritten){try{if(localStorage.getItem(draftKey)===lastDraftWritten)localStorage.removeItem(draftKey);}catch{}}
   }
   function checkpoint() { clearTimeout(inputTimer);commit();history.push(snapshot());updateDirty(); }
   function recordChange() {commit();history.push(snapshot());updateDirty();}
@@ -215,8 +239,14 @@ export async function mountEditor(api) {
     canvas.innerHTML=safe;
     source.value=safe;
     selectedMedia=null;blockSelection.clear();
+    renderTabs();renderLeaders();
     tabs.querySelectorAll('button').forEach(b=>{b.classList.toggle('active',b.dataset.section===state.active);b.setAttribute('aria-current',b.dataset.section===state.active?'page':'false');});
     draftTheme(); paintSelections();
+  }
+  function renderTabs(){
+    tabs.replaceChildren();sections().forEach(section=>{const b=document.createElement('button');b.type='button';b.dataset.section=section.id;b.textContent=section.num+' · '+section.label;b.onclick=()=>showSection(section.id);tabs.append(b);});
+    $('[data-section-name]').value=sections().find(s=>s.id===state.active)?.label||'';
+    $('[data-section-remove]').disabled=!state.active.startsWith('custom-');
   }
   function showSection(id) {checkpoint();state.active=id;render();}
   function clearSelections() { state.ranges={};blockSelection.clear();window.getSelection()?.removeAllRanges();paintSelections(); }
@@ -284,12 +314,14 @@ export async function mountEditor(api) {
   });
   canvas.addEventListener('click',event=>{
     if(event.target.closest('a'))event.preventDefault();
-    const media=event.target.closest('.portia-media') || event.target.closest('img, video, iframe');
+    const media=event.target.closest('.portia-media') || event.target.closest('img, video, iframe') || event.target.closest('.leader-photo');
     if(media && canvas.contains(media)){
       selectedMedia=media;
+      $('[data-tool-tab="media"]').click();
       $('[data-selected-media]').textContent='Выбрано: '+(media.querySelector?.('figcaption')?.textContent || media.getAttribute?.('alt') || media.tagName.toLowerCase());
       setStatus('Медиа выбрано. Размер, выравнивание, замену и удаление можно изменить справа.');
     }
+    const card=event.target.closest('.leadership-card');if(card){selectedLeader=card;renderLeaders(card);}
   });
   // Keep native text selection while pressing toolbar buttons.
   dialog.querySelectorAll('button').forEach(button=>button.addEventListener('mousedown',event=>event.preventDefault()));
@@ -311,6 +343,7 @@ export async function mountEditor(api) {
   }
   dialog.querySelectorAll('[data-style]').forEach(button=>button.onclick=()=>format({[button.dataset.style]:button.dataset.value}));
   $('[data-weight]').onchange=event=>format({fontWeight:event.target.value});
+  $('[data-font-size]').onchange=event=>{if(event.target.value)format({fontSize:event.target.value+'px'});};
   $('[data-apply-color]').onclick=()=>format({color:$('[data-color]').value});
   $('[data-apply-background]').onclick=()=>format({backgroundColor:$('[data-background]').value});
   $('[data-no-background]').onclick=()=>format({backgroundColor:'transparent'});
@@ -382,6 +415,83 @@ export async function mountEditor(api) {
     finally{state.uploading=Math.max(0,state.uploading-1);button.disabled=false;}
   }
   $('[data-add-image]').onclick=addImage;
+  function renderLeaders(card=null){
+    selectedLeader=card;
+    if(card)selectedMedia=card.querySelector('.leader-photo');
+    else if(selectedMedia?.closest('.leadership-card'))selectedMedia=null;
+    const select=$('[data-leader-select]');select.replaceChildren(new Option('Новая карточка',''));
+    [...canvas.querySelectorAll('.leadership-card')].forEach((item,i)=>select.add(new Option(item.querySelector('.leader-details > strong')?.textContent||'Без имени',String(i))));
+    if(card)select.value=String([...canvas.querySelectorAll('.leadership-card')].indexOf(card));
+    const groups=$('[data-leader-group]');groups.replaceChildren();
+    [...canvas.querySelectorAll('.leadership-grid')].forEach((grid,i)=>groups.add(new Option(grid.getAttribute('aria-label')||grid.closest('.content-block')?.querySelector('h2')?.textContent||`Группа ${i+1}`,String(i))));
+    if(card)groups.value=String([...canvas.querySelectorAll('.leadership-grid')].indexOf(card.closest('.leadership-grid')));
+    $('[data-leader-name]').value=card?.querySelector('.leader-details > strong')?.textContent||'';
+    $('[data-leader-description]').value=card?.querySelector('.leader-details > span')?.textContent||'';
+    $('[data-leader-save]').textContent=card?'Обновить карточку':'Добавить карточку';
+    $('[data-leader-remove]').disabled=!card;
+  }
+  $('[data-leader-select]').onchange=e=>renderLeaders(e.target.value===''?null:canvas.querySelectorAll('.leadership-card')[Number(e.target.value)]);
+  $('[data-leader-save]').onclick=()=>{
+    if(state.sourceMode || state.saving)return;
+    const name=$('[data-leader-name]').value.trim(),description=$('[data-leader-description]').value;
+    if(!name){setStatus('Введите имя руководителя.','warning');return;}
+    checkpoint();let grid=canvas.querySelectorAll('.leadership-grid')[Number($('[data-leader-group]').value)];
+    if(!grid){grid=document.createElement('div');grid.className='leadership-grid';canvas.append(grid);}
+    let card=selectedLeader;
+    if(!card){card=document.createElement('article');card.className='leadership-card';card.innerHTML='<div class="leader-photo"></div><div class="leader-details"><strong></strong><span></span></div>';}
+    if(card.parentElement!==grid)grid.append(card);
+    const nameNode=card.querySelector('.leader-details > strong'),descriptionNode=card.querySelector('.leader-details > span');
+    if(nameNode.textContent!==name)nameNode.textContent=name;
+    if(descriptionNode.textContent!==description)descriptionNode.textContent=description;
+    // An empty photo slot is selectable, so a new card can receive its first photo.
+    selectedMedia=card.querySelector('.leader-photo');recordChange();renderLeaders(card);setStatus('Карточка сохранена в черновике. Для фото выберите файл и нажмите «Заменить файлом выше».','dirty');
+  };
+  $('[data-leader-remove]').onclick=()=>{if(state.sourceMode || !selectedLeader || !confirm('Удалить выбранную карточку?'))return;checkpoint();selectedLeader.remove();selectedMedia=null;recordChange();renderLeaders();};
+  function replaceSelectedImage(target,url,alt=''){
+    if(!canvas.contains(target))throw Error('Выбранное изображение больше не открыто. Выберите его повторно.');
+    checkpoint();
+    const photo=target.matches('.leader-photo')?target:target.closest('.leader-photo');
+    if(photo){let img=photo.querySelector('img');if(!img){img=document.createElement('img');photo.append(img);}img.src=url;img.alt=alt;selectedMedia=img;}
+    else if(target.tagName==='IMG'){target.src=url;target.alt=alt;}
+    else {target.innerHTML=`<img src="${escapeHtml(url)}" alt="${escapeHtml(alt)}" loading="lazy">`;}
+    recordChange();
+  }
+  $('[data-replace-file]').onclick=async()=>{
+    const target=selectedMedia,file=$('[data-image-file]').files?.[0];
+    if(state.sourceMode || !target || !file){setStatus('Выберите фото в документе и файл изображения выше.','warning');return;}
+    if(file.size>25*1024*1024){setStatus('Изображение должно быть меньше 25 МБ.','error');return;}
+    state.uploading++;const button=$('[data-replace-file]');button.disabled=true;
+    try{const uploaded=await window.PortiaMedia.upload(await compressImage(file));replaceSelectedImage(target,uploaded.url,$('[data-image-alt]').value);setStatus('Фотография заменена в черновике.','dirty');}
+    catch(error){setStatus(error.message,'error');}finally{state.uploading--;button.disabled=false;}
+  };
+  function modifySections(action){
+    if(state.saving || state.uploading)return;
+    checkpoint();const list=sections();action(list);state.content.__sections=JSON.stringify(list);history.push(snapshot());render();updateDirty();
+  }
+  $('[data-section-add]').onclick=()=>modifySections(list=>{const id='custom-'+crypto.randomUUID();list.push({id,label:'Новый раздел'});state.content[id]='<div class="content-block"><h2 class="block-title">Новый раздел</h2><div class="block-text">Введите текст…</div></div>';state.active=id;clearSelections();});
+  $('[data-section-rename]').onclick=()=>{const label=$('[data-section-name]').value.trim();if(label)modifySections(list=>list.find(s=>s.id===state.active).label=label);};
+  function moveSection(delta){modifySections(list=>{const i=list.findIndex(s=>s.id===state.active),j=i+delta;if(j>=0 && j<list.length)[list[i],list[j]]=[list[j],list[i]];});}
+  $('[data-section-up]').onclick=()=>moveSection(-1);$('[data-section-down]').onclick=()=>moveSection(1);
+  $('[data-section-remove]').onclick=()=>{if(state.active.startsWith('custom-') && confirm('Удалить этот новый раздел? Можно отменить через Ctrl+Z.'))modifySections(list=>{const i=list.findIndex(s=>s.id===state.active);list.splice(i,1);delete state.content[state.active];clearSelections();state.active=list[0].id;});};
+  $('[data-export]').onclick=()=>{checkpoint();const url=URL.createObjectURL(new Blob([JSON.stringify({...snapshot(),revision:state.revision},null,2)],{type:'application/json'}));const a=document.createElement('a');a.href=url;a.download='portia-charter-'+new Date().toISOString().slice(0,10)+'.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);};
+  $('[data-source-backup]').onclick=async()=>{
+    if(!window.showDirectoryPicker){setStatus('Запись в папку доступна в Chrome/Edge на компьютере. Здесь используйте «Скачать копию JSON».','warning');return;}
+    if(state.uploading || state.saving){setStatus('Дождитесь завершения сохранения или загрузки.','warning');return;}
+    checkpoint();const data=sourceSnapshot(canonicalContent(state.content),state.revision);
+    try{
+      const folder=await window.showDirectoryPicker({mode:'readwrite'});
+      const index=await (await folder.getFileHandle('index.html')).getFile();
+      if(!/Portia/i.test(await index.text()))throw Error('Выберите корневую папку сайта Portia с index.html.');
+      if(!confirm('Записать текущую копию в charter-snapshot.json в этой папке? Предыдущий снимок, если он есть, будет заменён.'))return;
+      const handle=await folder.getFileHandle('charter-snapshot.json',{create:true});const writable=await handle.createWritable();
+      try{await writable.write(data);await writable.close();}catch(error){await writable.abort().catch(()=>{});throw error;}
+      setStatus('Копия записана в charter-snapshot.json. Отправьте файл в GitHub, чтобы сохранить его в репозитории.','saved');
+    }catch(error){if(error.name!=='AbortError')setStatus(error.message||'Не удалось записать копию.','error');}
+  };
+  $('[data-import]').onchange=async e=>{
+    const file=e.target.files?.[0];if(!file || state.saving)return;
+    try{if(file.size>10*1024*1024)throw Error('Копия должна быть меньше 10 МБ.');const draft=readDraft(await file.text());if(!draft || !originals.every(s=>typeof draft.content[s.id]==='string'))throw Error('Неверный формат или отсутствуют исходные разделы.');if(!confirm('Загрузить копию в черновик? Опубликованный устав не изменится до сохранения.'))return;checkpoint();state.content=canonicalContent(draft.content);state.active=sections()[0].id;clearSelections();history.push(snapshot());render();updateDirty();}catch(error){setStatus(error.message,'error');}finally{e.target.value='';}
+  };
 
   function mediaFigureHtml(media,caption='') {
     const safeCaption=escapeHtml(caption);
@@ -429,6 +539,10 @@ export async function mountEditor(api) {
     if(!selectedMedia){setStatus('Сначала нажмите на фото или видео в тексте.','warning');return;}
     const media=normalizeMediaUrl($('[data-media-url]').value.trim());
     if(!media){setStatus('Для замены укажите безопасную ссылку выше.','error');return;}
+    if(selectedMedia.closest('.leader-photo') || selectedMedia.matches('.leader-photo')){
+      if(media.kind!=='image'){setStatus('Для карточки нужна прямая ссылка на изображение или загрузка файла.','warning');return;}
+      replaceSelectedImage(selectedMedia,media.url,$('[data-image-alt]').value);return;
+    }
     checkpoint();selectedMedia.insertAdjacentHTML('beforebegin',sanitizeHtml(mediaFigureHtml(media,$('[data-media-caption]').value),document));selectedMedia.remove();selectedMedia=null;recordChange();
     setStatus('Медиа заменено.','dirty');
   };
@@ -437,7 +551,8 @@ export async function mountEditor(api) {
     checkpoint();selectedMedia.remove();selectedMedia=null;recordChange();$('[data-selected-media]').textContent='Нажмите на фото или видео в тексте.';setStatus('Медиа удалено.','dirty');
   };
   const preset=$('[data-preset]');
-  for(const name of window.PortiaTheme.names){const option=document.createElement('option');option.value=name;option.textContent=STYLE_LABELS[name]||name;preset.append(option);}
+  const usefulStyles=window.PortiaTheme.names.filter(name=>/^(brand-green|green-title|highlight-|rank-|doc-link)/.test(name));
+  for(const name of usefulStyles){const option=document.createElement('option');option.value=name;option.textContent=STYLE_LABELS[name]||name;preset.append(option);}
   function rgbHex(color) {
     if(/^#[\da-f]{6}$/i.test(color))return color;
     const values=color.match(/[\d.]+/g);
@@ -470,7 +585,8 @@ export async function mountEditor(api) {
   };
   function stamp(value){$('.charter-editor-time').textContent=value?'Версия '+state.revision+' · '+new Date(value).toLocaleString('ru-RU'):'Начальная версия сайта';}
   async function adopt(data) {
-    state.content=canonicalContent({...state.content,...data.content});state.revision=data.revision;
+    state.content=canonicalContent(data.content);state.revision=data.revision;
+    if(!sections().some(s=>s.id===state.active))state.active=sections()[0].id;
     saved=JSON.stringify(state.content);clearSelections();render();history.reset(snapshot());loadPreset();updateDirty();stamp(data.updatedAt);
   }
   async function reload() {
@@ -493,6 +609,7 @@ export async function mountEditor(api) {
     try {
       const data=await window.PortiaSupabase.saveCharter(payload,state.revision);
       state.content=payload;state.revision=data.revision;saved=JSON.stringify(payload);state.dirty=false;
+      try{if(localStorage.getItem(draftKey)===lastDraftWritten)localStorage.removeItem(draftKey);}catch{}
       await api.applyStoredState(data);stamp(data.updatedAt);setStatus('Сохранено. Изменения доступны всем посетителям.','saved');
     }catch(error){setStatus(error.message,'error');}
     finally {
@@ -507,6 +624,8 @@ export async function mountEditor(api) {
   dialog.addEventListener('cancel',event=>{event.preventDefault();close();});
   dialog.addEventListener('keydown',event=>{
     if(!(event.ctrlKey || event.metaKey))return;
+    if(event.altKey && event.code==='KeyK'){event.preventDefault();$('[data-tool-tab="styles"]').click();preset.focus();return;}
+    if(event.target.closest('input,textarea') && event.target!==source && event.code!=='KeyS')return;
     const key=event.key.toLowerCase();
     if(['z','y','s','b'].includes(key)){event.preventDefault();
       if(key==='s')save();else if(key==='b')format({fontWeight:'700'});else travel(key==='y' || event.shiftKey?'redo':'undo');
@@ -522,8 +641,12 @@ export async function mountEditor(api) {
     const entries=await Promise.all(api.sections.map(async section=>[section.id,await api.getSection(section.id)]));
     state.content=canonicalContent(Object.fromEntries(entries));
     if(api.getStyles()!=='{}')state.content.__styles=api.getStyles();
+    if(api.getSectionMetadata?.())state.content.__sections=api.getSectionMetadata();
     state.revision=api.getRevision();saved=JSON.stringify(state.content);
-    api.sections.forEach(section=>{const button=document.createElement('button');button.type='button';button.dataset.section=section.id;button.textContent=section.num+' · '+section.label;button.onclick=()=>showSection(section.id);tabs.append(button);});
+    let draft;try{draft=readDraft(localStorage.getItem(draftKey));}catch{}
+    if(draft && JSON.stringify(draft.content)!==saved && confirm('Найден локальный черновик. Восстановить его? Публикация потребует сохранения.')){
+      state.content=canonicalContent(draft.content);state.revision=draft.revision;state.active=sections().some(s=>s.id===draft.active)?draft.active:sections()[0].id;
+    }
     render();history.reset(snapshot());loadPreset();updateDirty();stamp(api.getUpdatedAt());
     const control=document.createElement('div');control.className='owner-control';
     const button=document.createElement('button');button.className='owner-control-button';button.textContent='Редактировать устав';
